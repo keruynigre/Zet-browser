@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/zet-core"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
