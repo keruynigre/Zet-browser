@@ -276,7 +276,7 @@ class BrowserActivity : Activity() {
             )
             fullscreenLayer.visibility = View.VISIBLE
             browserLayout.visibility = View.GONE
-            setImmersive(true)
+            setFullscreenMode(true)
         }
 
         override fun onHideCustomView() {
@@ -292,11 +292,11 @@ class BrowserActivity : Activity() {
         customView = null
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
-        setImmersive(false)
+        setFullscreenMode(false)
     }
 
     @Suppress("DEPRECATION")
-    private fun setImmersive(on: Boolean) {
+    private fun setFullscreenMode(on: Boolean) {
         window.decorView.systemUiVisibility = if (on) {
             View.SYSTEM_UI_FLAG_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
