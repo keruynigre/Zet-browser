@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const CHUNK: u64 = 10 * 1024 * 1024;
-const WORKERS: usize = 4;
+/// 403 alındığında parçalar bu boyuta bölünüp sırayla indirilir.
+const SMALL_CHUNK: u64 = 1024 * 1024;
+const WORKERS: usize = 3;
 const RETRIES: usize = 3;
 
 /// İndirilecek tek bir dosya.
@@ -140,6 +142,14 @@ fn download_part(part: &Part, ua: &str, job: &Job) -> Result<(), String> {
     let chunks = part.size.div_ceil(CHUNK) as usize;
     let next = AtomicUsize::new(0);
     let error: Mutex<Option<String>> = Mutex::new(None);
+    let ctx = ChunkCtx {
+        url: &part.url,
+        ua,
+        file: &file,
+        job,
+        serial: AtomicBool::new(false),
+        lock: Mutex::new(()),
+    };
 
     std::thread::scope(|s| {
         for _ in 0..WORKERS.min(chunks) {
@@ -153,7 +163,7 @@ fn download_part(part: &Part, ua: &str, job: &Job) -> Result<(), String> {
                 }
                 let start = i as u64 * CHUNK;
                 let end = (start + CHUNK).min(part.size) - 1;
-                if let Err(e) = fetch_chunk(&part.url, ua, start, end, &file, job) {
+                if let Err(e) = ctx.fetch(start, end) {
                     error.lock().unwrap().get_or_insert(e);
                     return;
                 }
@@ -170,23 +180,65 @@ fn download_part(part: &Part, ua: &str, job: &Job) -> Result<(), String> {
     }
 }
 
-fn fetch_chunk(url: &str, ua: &str, start: u64, end: u64, file: &File, job: &Job) -> Result<(), String> {
-    let mut last_err = String::new();
-    for _ in 0..RETRIES {
-        let mut written = 0u64;
-        match try_fetch_chunk(url, ua, start, end, file, job, &mut written) {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                // Başarısız denemede sayılan baytları geri al.
-                job.downloaded.fetch_sub(written, Ordering::Relaxed);
-                if job.cancel.load(Ordering::Relaxed) {
-                    return Err(e);
+/// Bir dosyanın parçalarını indiren iş parçacıklarının ortak durumu.
+struct ChunkCtx<'a> {
+    url: &'a str,
+    ua: &'a str,
+    file: &'a File,
+    job: &'a Job,
+    /// Sunucu 403 verdiyse true: istekler artık tek tek ve küçük parçalarla.
+    serial: AtomicBool,
+    lock: Mutex<()>,
+}
+
+impl ChunkCtx<'_> {
+    fn fetch(&self, start: u64, end: u64) -> Result<(), String> {
+        if !self.serial.load(Ordering::Relaxed) {
+            match self.fetch_range(start, end) {
+                Ok(()) => return Ok(()),
+                Err(e) if is_forbidden(&e) => {
+                    self.serial.store(true, Ordering::Relaxed);
                 }
-                last_err = e;
+                Err(e) => return Err(e),
             }
         }
+        // Yavaş mod: küçük parçalar, aynı anda tek istek.
+        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = start;
+        while s <= end {
+            let e = (s + SMALL_CHUNK - 1).min(end);
+            self.fetch_range(s, e)?;
+            s = e + 1;
+        }
+        Ok(())
     }
-    Err(format!("Parça indirilemedi: {last_err}"))
+
+    /// Aralığı yeniden denemelerle indirir.
+    fn fetch_range(&self, start: u64, end: u64) -> Result<(), String> {
+        let mut last_err = String::new();
+        for attempt in 0..RETRIES {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(400 * attempt as u64));
+            }
+            let mut written = 0u64;
+            match try_fetch_chunk(self.url, self.ua, start, end, self.file, self.job, &mut written) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    // Başarısız denemede sayılan baytları geri al.
+                    self.job.downloaded.fetch_sub(written, Ordering::Relaxed);
+                    if self.job.cancel.load(Ordering::Relaxed) {
+                        return Err(e);
+                    }
+                    last_err = e;
+                }
+            }
+        }
+        Err(format!("Parça {start}-{end} indirilemedi: {last_err}"))
+    }
+}
+
+fn is_forbidden(err: &str) -> bool {
+    err.contains("403")
 }
 
 fn try_fetch_chunk(
@@ -281,6 +333,11 @@ mod tests {
 
     /// `?range=a-b` parametresini anlayan küçük yerel HTTP sunucusu.
     fn serve(data: Vec<u8>) -> String {
+        serve_limited(data, usize::MAX)
+    }
+
+    /// `max_range` bayttan büyük aralık isteklerine 403 döner (YouTube benzeri).
+    fn serve_limited(data: Vec<u8>, max_range: usize) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
@@ -301,6 +358,14 @@ mod tests {
                         Some((_, r)) => {
                             let (a, b) = r.split_once('-').unwrap();
                             let (a, b): (usize, usize) = (a.parse().unwrap(), b.parse().unwrap());
+                            if b + 1 - a > max_range {
+                                let mut s = stream;
+                                let _ = write!(
+                                    s,
+                                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                                );
+                                return;
+                            }
                             data[a..=b].to_vec()
                         }
                         None => data.clone(),
@@ -350,6 +415,37 @@ mod tests {
         std::fs::remove_file(path).ok();
         forget(id);
         assert!(get(id).is_none());
+    }
+
+    #[test]
+    fn falls_back_to_small_chunks_on_403() {
+        let content = data((CHUNK * 2 + 777) as usize);
+        let url = serve_limited(content.clone(), SMALL_CHUNK as usize);
+        let path = std::env::temp_dir().join(format!("zet-dl-403-{}.bin", std::process::id()));
+        let id = start(
+            vec![Part { url, path: path.to_string_lossy().into(), size: content.len() as u64 }],
+            "test".into(),
+        );
+        assert_eq!(wait(id), JobState::Done);
+        assert_eq!(get(id).unwrap().downloaded.load(Ordering::Relaxed), content.len() as u64);
+        assert_eq!(std::fs::read(&path).unwrap(), content);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn reports_range_when_even_small_chunks_fail() {
+        let content = data(3 * SMALL_CHUNK as usize);
+        let url = serve_limited(content.clone(), 1000);
+        let path = std::env::temp_dir().join(format!("zet-dl-403b-{}.bin", std::process::id()));
+        let id = start(
+            vec![Part { url, path: path.to_string_lossy().into(), size: content.len() as u64 }],
+            "test".into(),
+        );
+        match wait(id) {
+            JobState::Failed(e) => assert!(e.contains("Parça 0-") && e.contains("403"), "{e}"),
+            s => panic!("beklenmeyen durum: {s:?}"),
+        }
+        assert!(!path.exists());
     }
 
     #[test]
