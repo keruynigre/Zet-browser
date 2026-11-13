@@ -267,9 +267,19 @@ struct Client {
 
 const CLIENTS: &[Client] = &[
     Client {
-        name: "ANDROID_VR",
+        name: "ANDROID_VR 1.65",
         context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.65.10","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
         user_agent: "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+    },
+    Client {
+        name: "ANDROID_VR 1.62",
+        context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.62.27","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
+        user_agent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+    },
+    Client {
+        name: "ANDROID_VR 1.57",
+        context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.57.29","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
+        user_agent: "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
     },
     Client {
         name: "IOS",
@@ -290,36 +300,67 @@ fn player_body(client: &Client, video_id: &str) -> Value {
     })
 }
 
-/// Video bilgisini ağdan alır; istemcileri sırayla dener.
+fn fetch_player(client: &Client, video_id: &str) -> Result<Value, String> {
+    let mut resp = crate::net::agent()
+        .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
+        .header("User-Agent", client.user_agent)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://www.youtube.com")
+        .send_json(player_body(client, video_id))
+        .map_err(|e| format!("API isteği: {e}"))?;
+    resp.body_mut()
+        .with_config()
+        .limit(20 << 20)
+        .read_json()
+        .map_err(|e| format!("API yanıtı okunamadı: {e}"))
+}
+
+/// Akışın gerçekten indirilebildiğini ilk 1 KB'ı isteyerek doğrular.
+/// (Bazı istemcilerin URL'leri ek doğrulama jetonu olmadan 403 döner.)
+fn probe_stream(stream: &Stream, user_agent: &str) -> Result<(), String> {
+    let url = crate::download::with_range(&stream.url, 0, 1023);
+    let resp = crate::net::agent()
+        .get(&url)
+        .header("User-Agent", user_agent)
+        .call()
+        .map_err(|e| format!("akış itag {}: {e}", stream.itag))?;
+    let mut body = Vec::new();
+    use std::io::Read;
+    resp.into_body()
+        .into_reader()
+        .take(2048)
+        .read_to_end(&mut body)
+        .map_err(|e| format!("akış itag {}: {e}", stream.itag))?;
+    if body.is_empty() {
+        return Err(format!("akış itag {}: boş yanıt", stream.itag));
+    }
+    Ok(())
+}
+
+/// Video bilgisini ağdan alır. İstemcileri sırayla dener; her birinde
+/// en iyi seçeneğin akışlarının indirilebildiğini doğrular.
 pub fn fetch_info(video_id: &str) -> Result<VideoInfo, String> {
-    let agent = crate::net::agent();
     let mut errors = Vec::new();
     for client in CLIENTS {
-        let result = agent
-            .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
-            .header("User-Agent", client.user_agent)
-            .header("Content-Type", "application/json")
-            .send_json(player_body(client, video_id));
-        let json: Value = match result {
-            Ok(mut resp) => match resp.body_mut().with_config().limit(20 << 20).read_json() {
-                Ok(v) => v,
-                Err(e) => {
-                    errors.push(format!("{}: yanıt okunamadı ({e})", client.name));
-                    continue;
+        let attempt = fetch_player(client, video_id)
+            .and_then(|json| parse_player_response(&json, client.user_agent))
+            .and_then(|info| {
+                let options = download_options(&info);
+                let first = options.first().ok_or("uygun format yok")?;
+                for stream in &first.streams {
+                    probe_stream(stream, client.user_agent)?;
                 }
-            },
-            Err(e) => {
-                errors.push(format!("{}: {e}", client.name));
-                continue;
-            }
-        };
-        match parse_player_response(&json, client.user_agent) {
-            Ok(info) if !download_options(&info).is_empty() => return Ok(info),
-            Ok(_) => errors.push(format!("{}: uygun format yok", client.name)),
-            Err(e) => errors.push(format!("{}: {e}", client.name)),
+                Ok(info)
+            });
+        match attempt {
+            Ok(info) => return Ok(info),
+            Err(e) => errors.push(format!("• {}: {e}", client.name)),
         }
     }
-    Err(errors.join("\n"))
+    Err(format!(
+        "Denenen tüm istemciler başarısız oldu:\n{}",
+        errors.join("\n")
+    ))
 }
 
 #[cfg(test)]

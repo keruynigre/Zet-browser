@@ -3,6 +3,9 @@ package dev.zet.browser
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.os.Build
@@ -206,6 +209,11 @@ class YouTubeDownloader(
             .setTitle(title)
             .setMessage(message.ifBlank { "?" })
             .setPositiveButton(R.string.ok, null)
+            .setNeutralButton(R.string.copy) { _, _ ->
+                val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("Zet hata", "$title\n$message"))
+                toast(activity.getString(R.string.copied))
+            }
             .show()
     }
 

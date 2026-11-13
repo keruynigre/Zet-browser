@@ -24,4 +24,6 @@
     <string name="yt_cancelled">İndirme iptal edildi</string>
     <string name="yt_permission">Depolama iznini verip tekrar dene</string>
     <string name="ok">Tamam</string>
+    <string name="copy">Kopyala</string>
+    <string name="copied">Hata metni kopyalandı</string>
 </resources>

@@ -119,7 +119,7 @@ pub fn forget(id: u64) {
     jobs().lock().unwrap().remove(&id);
 }
 
-fn with_range(url: &str, start: u64, end: u64) -> String {
+pub(crate) fn with_range(url: &str, start: u64, end: u64) -> String {
     let sep = if url.contains('?') { '&' } else { '?' };
     format!("{url}{sep}range={start}-{end}")
 }
