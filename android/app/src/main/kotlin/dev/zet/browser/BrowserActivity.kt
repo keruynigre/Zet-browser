@@ -460,8 +460,14 @@ class BrowserActivity : Activity() {
         webView.saveState(outState)
     }
 
+    override fun onResume() {
+        super.onResume()
+        ytDownloader.startWatching()
+    }
+
     override fun onPause() {
         super.onPause()
+        ytDownloader.stopWatching()
         CookieManager.getInstance().flush()
     }
 
