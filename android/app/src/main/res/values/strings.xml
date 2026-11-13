@@ -13,4 +13,15 @@
     <string name="no_app">Bu bağlantıyı açacak uygulama yok</string>
     <string name="lists_updating">Reklam listeleri güncelleniyor…</string>
     <string name="lists_ready">Reklam engelleyici hazır</string>
+    <string name="download_video">Videoyu indir</string>
+    <string name="cancel">İptal</string>
+    <string name="yt_fetching">Video bilgisi alınıyor…</string>
+    <string name="yt_fetch_failed">Video bilgisi alınamadı</string>
+    <string name="yt_busy">Zaten bir indirme sürüyor</string>
+    <string name="yt_merging">Birleştiriliyor: %1$s</string>
+    <string name="yt_saved">Kaydedildi: İndirilenler/Zet/%1$s</string>
+    <string name="yt_failed">İndirme başarısız</string>
+    <string name="yt_cancelled">İndirme iptal edildi</string>
+    <string name="yt_permission">Depolama iznini verip tekrar dene</string>
+    <string name="ok">Tamam</string>
 </resources>

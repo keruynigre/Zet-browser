@@ -42,6 +42,8 @@ class BrowserActivity : Activity() {
     private lateinit var btnForward: TextView
     private lateinit var browserLayout: View
     private lateinit var fullscreenLayer: FrameLayout
+    private lateinit var btnDownload: TextView
+    private lateinit var ytDownloader: YouTubeDownloader
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -65,6 +67,14 @@ class BrowserActivity : Activity() {
         btnForward = findViewById(R.id.btnForward)
         browserLayout = findViewById(R.id.browser)
         fullscreenLayer = findViewById(R.id.fullscreen)
+        btnDownload = findViewById(R.id.btnDownload)
+        ytDownloader = YouTubeDownloader(
+            this,
+            findViewById(R.id.downloadBar),
+            findViewById(R.id.downloadText),
+            findViewById(R.id.downloadProgress),
+            findViewById(R.id.downloadCancel),
+        )
 
         adblockEnabled = prefs().getBoolean(PREF_ADBLOCK, true)
         ZetCore.setEnabled(adblockEnabled)
@@ -124,6 +134,10 @@ class BrowserActivity : Activity() {
         findViewById<View>(R.id.btnReload).setOnClickListener {
             if (progress.visibility == View.VISIBLE) webView.stopLoading() else webView.reload()
         }
+        btnDownload.setOnClickListener {
+            val id = ZetCore.ytVideoId(webView.url ?: "")
+            if (id.isNotEmpty()) ytDownloader.start(id)
+        }
         shield.setOnClickListener {
             adblockEnabled = !adblockEnabled
             ZetCore.setEnabled(adblockEnabled)
@@ -155,6 +169,8 @@ class BrowserActivity : Activity() {
 
     private fun showUrl(url: String?) {
         if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
+        val isVideo = url != null && ZetCore.ytVideoId(url).isNotEmpty()
+        btnDownload.visibility = if (isVideo) View.VISIBLE else View.GONE
     }
 
     private fun updateShield() {

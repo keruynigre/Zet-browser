@@ -17,7 +17,7 @@ Hedef platformlar: **Windows** ve **Android**.
 - [x] Aşama 0: Android kabuğu + GitHub Actions ile APK derleme
 - [ ] Aşama 1: Temel tarayıcı (sekmeler, geçmiş, yer imleri)
 - [ ] Aşama 2: Reklam engelleme entegrasyonu (ağ + kozmetik)
-- [ ] Aşama 3: YouTube indirici
+- [x] Aşama 3: YouTube indirici (ilk sürüm: 1080p'ye kadar MP4, sadece ses M4A)
 - [ ] Aşama 4: Cila ve hız
 
 ## Geliştirme

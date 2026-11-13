@@ -6,9 +6,12 @@
 use std::sync::RwLock;
 
 use jni::objects::{JObject, JObjectArray, JString};
-use jni::sys::{jboolean, jint, jstring, JNI_FALSE, JNI_TRUE};
+use jni::objects::JLongArray;
+use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
+use zet_core::download::{self, Part};
 use zet_core::url::{normalize_input, DEFAULT_SEARCH};
+use zet_core::youtube;
 use zet_core::{AdBlocker, BlockDecision, ResourceType};
 
 static BLOCKER: RwLock<Option<AdBlocker>> = RwLock::new(None);
@@ -159,6 +162,103 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_normalizeInput(
     let text = read_string(&mut env, &input);
     let url = normalize_input(&text, DEFAULT_SEARCH);
     new_string(&mut env, &url)
+}
+
+/// Video bilgisini alır ve seçenekleri JSON olarak döner (ağ çağrısı yapar,
+/// arka plan thread'inden çağrılmalı).
+pub fn yt_options_json(video_id: &str) -> String {
+    match youtube::fetch_info(video_id) {
+        Ok(info) => serde_json::json!({
+            "ok": true,
+            "title": info.title,
+            "author": info.author,
+            "fileName": youtube::safe_file_name(&info.title),
+            "userAgent": info.user_agent,
+            "options": youtube::download_options(&info),
+        })
+        .to_string(),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+    }
+}
+
+fn read_string_array(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> {
+    let len = env.get_array_length(arr).unwrap_or(0);
+    let mut out = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        if let Ok(obj) = env.get_object_array_element(arr, i) {
+            let s = JString::from(obj);
+            out.push(read_string(env, &s));
+        }
+    }
+    out
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_ytVideoId(
+    mut env: JNIEnv,
+    _this: JObject,
+    url: JString,
+) -> jstring {
+    let url = read_string(&mut env, &url);
+    let id = youtube::video_id_from_url(&url).unwrap_or_default();
+    new_string(&mut env, &id)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_ytOptions(
+    mut env: JNIEnv,
+    _this: JObject,
+    video_id: JString,
+) -> jstring {
+    let id = read_string(&mut env, &video_id);
+    let json = yt_options_json(&id);
+    new_string(&mut env, &json)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_dlStart(
+    mut env: JNIEnv,
+    _this: JObject,
+    urls: JObjectArray,
+    paths: JObjectArray,
+    sizes: JLongArray,
+    user_agent: JString,
+) -> jlong {
+    let urls = read_string_array(&mut env, &urls);
+    let paths = read_string_array(&mut env, &paths);
+    let n = env.get_array_length(&sizes).unwrap_or(0) as usize;
+    let mut size_buf = vec![0i64; n];
+    let _ = env.get_long_array_region(&sizes, 0, &mut size_buf);
+    let ua = read_string(&mut env, &user_agent);
+    let parts = urls
+        .into_iter()
+        .zip(paths)
+        .zip(size_buf)
+        .map(|((url, path), size)| Part { url, path, size: size.max(0) as u64 })
+        .collect();
+    download::start(parts, ua) as jlong
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_dlStatus(
+    mut env: JNIEnv,
+    _this: JObject,
+    id: jlong,
+) -> jstring {
+    let json = download::get(id as u64)
+        .map(|j| j.status_json())
+        .unwrap_or_else(|| r#"{"state":"failed","error":"İş bulunamadı"}"#.into());
+    new_string(&mut env, &json)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_dlCancel(_env: JNIEnv, _this: JObject, id: jlong) {
+    download::cancel(id as u64);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_dlForget(_env: JNIEnv, _this: JObject, id: jlong) {
+    download::forget(id as u64);
 }
 
 #[cfg(test)]
