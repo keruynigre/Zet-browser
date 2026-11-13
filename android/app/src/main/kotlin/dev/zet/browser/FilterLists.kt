@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 /** Reklam filtre listelerini indirir, günceller ve Rust motoruna yükler. */
 class FilterLists(context: Context) {
     private val dir = File(context.filesDir, "filters").apply { mkdirs() }
-    private val cache = File(dir, "engine.bin")
+    private val cache = File(dir, "engine-v2.bin")
 
     private val sources = listOf(
         "easylist.txt" to "https://easylist.to/easylist/easylist.txt",

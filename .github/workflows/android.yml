@@ -33,6 +33,9 @@ jobs:
       - name: Rust testleri
         run: cargo test --workspace
 
+      - name: JavaScript testleri
+        run: node crates/zet-core/tests/js/youtube_adblock.test.mjs
+
       - name: Rust çekirdeğini Android için derle
         run: |
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"

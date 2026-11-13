@@ -42,4 +42,7 @@ object ZetCore {
     external fun dlCancel(id: Long)
 
     external fun dlForget(id: Long)
+
+    /** YouTube sayfalarına belge başında enjekte edilecek reklam engelleme betiği. */
+    external fun ytAdblockScript(): String
 }

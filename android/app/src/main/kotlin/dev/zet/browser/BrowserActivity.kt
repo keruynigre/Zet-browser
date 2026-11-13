@@ -27,6 +27,9 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicInteger
@@ -53,6 +56,10 @@ class BrowserActivity : Activity() {
     private var currentPageUrl: String = ""
     private val blockedOnPage = AtomicInteger(0)
     private var adblockEnabled = true
+    private var ytScriptHandler: ScriptHandler? = null
+    private val docStartSupported by lazy {
+        WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,6 +133,25 @@ class BrowserActivity : Activity() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
+        updateYoutubeScript()
+    }
+
+    /** YouTube reklam betiğini reklam engelleme ayarına göre ekler/kaldırır. */
+    private fun updateYoutubeScript() {
+        if (!docStartSupported) return
+        if (adblockEnabled && ytScriptHandler == null) {
+            ytScriptHandler = WebViewCompat.addDocumentStartJavaScript(
+                webView, ZetCore.ytAdblockScript(), YT_ORIGINS,
+            )
+        } else if (!adblockEnabled) {
+            ytScriptHandler?.remove()
+            ytScriptHandler = null
+        }
+    }
+
+    private fun isYoutube(url: String?): Boolean {
+        val host = url?.let { Uri.parse(it).host } ?: return false
+        return host == "youtube.com" || host.endsWith(".youtube.com")
     }
 
     private fun setupToolbar() {
@@ -142,6 +168,7 @@ class BrowserActivity : Activity() {
             adblockEnabled = !adblockEnabled
             ZetCore.setEnabled(adblockEnabled)
             prefs().edit().putBoolean(PREF_ADBLOCK, adblockEnabled).apply()
+            updateYoutubeScript()
             val msg = if (adblockEnabled) R.string.adblock_on else R.string.adblock_off
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             webView.reload()
@@ -248,6 +275,10 @@ class BrowserActivity : Activity() {
             showUrl(url)
             progress.visibility = View.VISIBLE
             updateNavButtons()
+            // Eski WebView'larda belge başı betiği yok: mümkün olan en erken anda enjekte et.
+            if (!docStartSupported && adblockEnabled && isYoutube(url)) {
+                view.evaluateJavascript(ZetCore.ytAdblockScript(), null)
+            }
         }
 
         override fun onPageCommitVisible(view: WebView, url: String?) {
@@ -441,6 +472,10 @@ class BrowserActivity : Activity() {
 
     companion object {
         private const val HOME_URL = "https://www.google.com"
+        private val YT_ORIGINS = setOf(
+            "https://www.youtube.com", "https://m.youtube.com",
+            "https://youtube.com", "https://music.youtube.com",
+        )
         private const val PREF_ADBLOCK = "adblock_enabled"
         private const val PREF_LAST_URL = "last_url"
     }

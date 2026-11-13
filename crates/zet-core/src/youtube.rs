@@ -6,6 +6,9 @@
 //! fonksiyonlardır ve testlerle doğrulanır.
 
 use serde::Serialize;
+
+/// YouTube sayfalarına belge başında enjekte edilecek reklam engelleme betiği.
+pub const ADBLOCK_SCRIPT: &str = include_str!("scripts/youtube_adblock.js");
 use serde_json::Value;
 
 /// URL'den 11 karakterlik YouTube video kimliğini çıkarır.

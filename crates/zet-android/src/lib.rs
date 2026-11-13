@@ -262,6 +262,14 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_dlForget(_env: JNIEnv, _this
     download::forget(id as u64);
 }
 
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_ytAdblockScript(
+    mut env: JNIEnv,
+    _this: JObject,
+) -> jstring {
+    new_string(&mut env, youtube::ADBLOCK_SCRIPT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

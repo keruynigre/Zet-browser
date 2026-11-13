@@ -72,6 +72,17 @@ pub enum BlockDecision {
     Rewrite(String),
 }
 
+/// Her zaman eklenen yerleşik kurallar (YouTube reklam/izleme uç noktaları).
+pub const BUILTIN_RULES: &str = "\
+||youtube.com/api/stats/ads^
+||youtube.com/pagead/
+||youtube.com/ptracking^
+||youtube.com/get_midroll_
+||youtube.com/youtubei/v1/player/ad_break^
+||googleads.g.doubleclick.net^
+||static.doubleclick.net/instream/
+";
+
 /// Reklam engelleme motoru.
 pub struct AdBlocker {
     engine: Engine,
@@ -86,6 +97,7 @@ impl AdBlocker {
         S: Into<String>,
     {
         let mut set = FilterSet::new(false);
+        set.add_filter_list(BUILTIN_RULES.to_string(), ParseOptions::default());
         for list in lists {
             set.add_filter_list(list.into(), ParseOptions::default());
         }
@@ -213,6 +225,29 @@ example.org###sponsor
             ),
             BlockDecision::Block
         );
+    }
+
+    #[test]
+    fn builtin_youtube_rules_apply_without_lists() {
+        let b = AdBlocker::empty();
+        let page = "https://m.youtube.com/watch?v=x";
+        assert_eq!(
+            b.check("https://www.youtube.com/api/stats/ads?ver=2", page, ResourceType::Xhr),
+            BlockDecision::Block
+        );
+        assert_eq!(
+            b.check("https://m.youtube.com/youtubei/v1/player?key=1", page, ResourceType::Xhr),
+            BlockDecision::Allow
+        );
+        assert_eq!(
+            b.check("https://rr1---sn-x.googlevideo.com/videoplayback?itag=18", page, ResourceType::Media),
+            BlockDecision::Allow
+        );
+    }
+
+    #[test]
+    fn youtube_script_is_embedded() {
+        assert!(crate::youtube::ADBLOCK_SCRIPT.contains("adPlacements"));
     }
 
     #[test]
