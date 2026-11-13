@@ -14,7 +14,7 @@ Hedef platformlar: **Windows** ve **Android**.
 ## Yol haritası
 
 - [x] Aşama 0: Çekirdek reklam engelleme motoru
-- [ ] Aşama 0: Android kabuğu + GitHub Actions ile APK derleme
+- [x] Aşama 0: Android kabuğu + GitHub Actions ile APK derleme
 - [ ] Aşama 1: Temel tarayıcı (sekmeler, geçmiş, yer imleri)
 - [ ] Aşama 2: Reklam engelleme entegrasyonu (ağ + kozmetik)
 - [ ] Aşama 3: YouTube indirici
@@ -25,3 +25,13 @@ Hedef platformlar: **Windows** ve **Android**.
 ```sh
 cargo test
 ```
+
+## Android APK'yı telefona kurma
+
+Her `main` güncellemesinde GitHub Actions APK derler ve **Releases** sayfasına koyar.
+Telefondan en son sürüm:
+
+https://github.com/keruynigre/Zet-browser/releases/latest/download/zet-browser.apk
+
+İlk kurulumda "bilinmeyen kaynaklardan yüklemeye" izin vermen gerekir.
+Tüm sürümler aynı anahtarla imzalandığı için yeni APK eskisinin üzerine kurulur, veriler silinmez.

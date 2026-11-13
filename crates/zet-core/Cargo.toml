@@ -6,4 +6,4 @@ license.workspace = true
 description = "Zet Browser platform-independent core: ad blocking, downloads, storage"
 
 [dependencies]
-adblock = "0.13"
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }

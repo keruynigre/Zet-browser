@@ -241,3 +241,39 @@ example.org###sponsor
         assert_eq!(ResourceType::guess_from_url("https://a.com/api"), ResourceType::Other);
     }
 }
+
+impl AdBlocker {
+    /// Motoru hızlı açılış için ikili biçime çevirir (diske önbellek).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.engine.serialize()
+    }
+
+    /// [`AdBlocker::to_bytes`] çıktısından motoru geri yükler.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let mut engine = Engine::default();
+        engine.deserialize(bytes).ok()?;
+        Some(Self { engine, enabled: true })
+    }
+}
+
+#[cfg(test)]
+mod serialize_tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip_keeps_rules() {
+        let b = AdBlocker::from_lists(["||doubleclick.net^"]);
+        let restored = AdBlocker::from_bytes(&b.to_bytes()).unwrap();
+        assert_eq!(
+            restored.check("https://doubleclick.net/a.js", "https://x.com/", ResourceType::Script),
+            BlockDecision::Block
+        );
+        assert!(AdBlocker::from_bytes(b"bozuk").is_none());
+    }
+
+    #[test]
+    fn engine_is_thread_safe() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<AdBlocker>();
+    }
+}

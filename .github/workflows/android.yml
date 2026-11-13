@@ -1,0 +1,76 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust kurulumu
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo-ndk kurulumu
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Rust testleri
+        run: cargo test --workspace
+
+      - name: Rust çekirdeğini Android için derle
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          cargo ndk -t arm64-v8a -t armeabi-v7a \
+            -o android/app/src/main/jniLibs \
+            build --release -p zet-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: APK derle
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+
+      - name: APK'yı yeniden adlandır
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk zet-browser.apk
+          ls -la zet-browser.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zet-browser-apk
+          path: zet-browser.apk
+
+      - name: GitHub Release olarak yayınla
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ github.run_number }}
+          name: Zet Android ${{ github.run_number }}
+          body: |
+            Commit: ${{ github.sha }}
+            Telefona kurmak için aşağıdaki `zet-browser.apk` dosyasını indir.
+          files: zet-browser.apk
+          make_latest: true

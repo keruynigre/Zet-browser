@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kalkan içinde "Z" -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF22C55E"
+        android:pathData="M54,26 L78,35 L78,54 C78,68 67.5,79 54,84 C40.5,79 30,68 30,54 L30,35 Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M42,42 L66,42 L66,47 L50,62 L66,62 L66,68 L42,68 L42,63 L58,48 L42,48 Z" />
+</vector>

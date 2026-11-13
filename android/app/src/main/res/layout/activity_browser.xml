@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/browser"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/bar_bg"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp">
+
+            <TextView
+                android:id="@+id/btnBack"
+                style="@style/BarButton"
+                android:contentDescription="@string/back"
+                android:text="‹" />
+
+            <TextView
+                android:id="@+id/btnForward"
+                style="@style/BarButton"
+                android:contentDescription="@string/forward"
+                android:text="›" />
+
+            <EditText
+                android:id="@+id/urlBar"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@drawable/url_field_bg"
+                android:hint="@string/url_hint"
+                android:imeOptions="actionGo|flagNoExtractUi"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:selectAllOnFocus="true"
+                android:singleLine="true"
+                android:textColor="@color/text"
+                android:textColorHint="@color/text_dim"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/btnShield"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:minWidth="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/shield"
+                android:gravity="center"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:textColor="@color/accent"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnReload"
+                style="@style/BarButton"
+                android:contentDescription="@string/reload"
+                android:text="↻" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:max="100"
+            android:progressTint="@color/accent"
+            android:visibility="gone" />
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- Tam ekran video (YouTube vb.) bu katmana yerleşir -->
+    <FrameLayout
+        android:id="@+id/fullscreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF000000"
+        android:visibility="gone" />
+</FrameLayout>

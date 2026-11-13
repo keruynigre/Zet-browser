@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zet</string>
+    <string name="url_hint">Ara veya adres yaz</string>
+    <string name="back">Geri</string>
+    <string name="forward">İleri</string>
+    <string name="reload">Yenile</string>
+    <string name="shield">Reklam engelleyici</string>
+    <string name="adblock_on">Reklam engelleme açık</string>
+    <string name="adblock_off">Reklam engelleme kapalı</string>
+    <string name="download_started">İndiriliyor: %1$s</string>
+    <string name="download_failed">İndirme başlatılamadı</string>
+    <string name="no_app">Bu bağlantıyı açacak uygulama yok</string>
+    <string name="lists_updating">Reklam listeleri güncelleniyor…</string>
+    <string name="lists_ready">Reklam engelleyici hazır</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bar_bg">#FF111827</color>
+    <color name="field_bg">#FF1F2937</color>
+    <color name="text">#FFF9FAFB</color>
+    <color name="text_dim">#FF9CA3AF</color>
+    <color name="accent">#FF22C55E</color>
+    <color name="accent_off">#FF6B7280</color>
+</resources>
