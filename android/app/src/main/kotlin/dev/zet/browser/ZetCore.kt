@@ -48,4 +48,12 @@ object ZetCore {
 
     /** Ekran kapalıyken YouTube çalmayı sağlayan betik. */
     external fun ytBackgroundScript(): String
+
+    /** Yerleşik Tor'u başlatır; yerel SOCKS5 portunu (hata: -1) döner. Arka planda çağır. */
+    external fun torStart(dataDir: String): Int
+
+    /** JSON: {state: off|starting|ready|failed, progress: 0-100, error, port} */
+    external fun torStatus(): String
+
+    external fun torStop()
 }

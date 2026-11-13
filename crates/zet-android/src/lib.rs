@@ -278,6 +278,28 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_ytBackgroundScript(
     new_string(&mut env, youtube::BACKGROUND_SCRIPT)
 }
 
+/// Tor'u başlatır; yerel SOCKS5 portunu, hata olursa -1 döner.
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_torStart(
+    mut env: JNIEnv,
+    _this: JObject,
+    data_dir: JString,
+) -> jint {
+    let dir = read_string(&mut env, &data_dir);
+    zet_tor::start(&dir).map(i32::from).unwrap_or(-1)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_torStatus(mut env: JNIEnv, _this: JObject) -> jstring {
+    let json = zet_tor::status_json();
+    new_string(&mut env, &json)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_torStop(_env: JNIEnv, _this: JObject) {
+    zet_tor::stop();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

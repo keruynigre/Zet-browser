@@ -47,4 +47,14 @@
     <string name="link_copied">Bağlantı kopyalandı</string>
     <string name="share_page">Sayfayı paylaş</string>
     <string name="tab_untitled">Yeni sekme</string>
+    <string name="tor">Tor</string>
+    <string name="tor_on">Tor\'u aç</string>
+    <string name="tor_off">Tor\'u kapat</string>
+    <string name="tor_starting">Tor ağına bağlanılıyor… %%%1$d</string>
+    <string name="tor_ready">Tor hazır: trafiğin Tor ağı üzerinden geçiyor</string>
+    <string name="tor_failed">Tor bağlanamadı</string>
+    <string name="tor_disabled">Tor kapatıldı</string>
+    <string name="tor_unsupported">Bu cihazın WebView sürümü proxy desteklemiyor; Tor kullanılamıyor.</string>
+    <string name="tor_status_title">Tor durumu</string>
+    <string name="tor_info">Açıkken tüm sekmelerin trafiği ve DNS sorguları Tor ağından geçer, IP adresin gizlenir. Sayfalar daha yavaş açılabilir; bazı siteler doğrulama isteyebilir. WebRTC kapatılır. Not: YouTube indirmeleri ve reklam listesi güncellemeleri Tor\'dan geçmez.</string>
 </resources>

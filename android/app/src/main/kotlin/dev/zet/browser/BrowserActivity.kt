@@ -42,6 +42,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.webkit.ProfileStore
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -67,6 +69,7 @@ class BrowserActivity : Activity() {
         var loading = false
         var adblockScript: ScriptHandler? = null
         var backgroundScript: ScriptHandler? = null
+        var torScript: ScriptHandler? = null
 
         // En sonda: createWebView yukarıdaki alanlara yazar, önce onlar hazır olmalı.
         val webView: WebView = createWebView(this)
@@ -94,6 +97,9 @@ class BrowserActivity : Activity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private var adblockEnabled = true
+    private var torEnabled = false
+    private lateinit var btnTor: TextView
+    private val torHandler = Handler(Looper.getMainLooper())
     private var incognitoProfile: String? = null
     private val docStartSupported by lazy {
         WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -116,6 +122,8 @@ class BrowserActivity : Activity() {
         browserLayout = findViewById(R.id.browser)
         fullscreenLayer = findViewById(R.id.fullscreen)
         btnDownload = findViewById(R.id.btnDownload)
+        btnTor = findViewById(R.id.btnTor)
+        btnTor.setOnClickListener { showTorStatus() }
         ytDownloader = YouTubeDownloader(
             this,
             findViewById(R.id.downloadBar),
@@ -148,9 +156,112 @@ class BrowserActivity : Activity() {
             ZetCore.setEnabled(adblockEnabled)
         }
 
+        // Tor açık kaldıysa sekmeler yüklenmeden önce proxy'yi kur.
+        if (prefs().getBoolean(PREF_TOR, false)) setTor(true, announce = false)
+
         restoreTabs()
         if (!handleIntent(intent) && tabs.isEmpty()) {
             openTab(HOME_URL, incognito = false)
+        }
+    }
+
+    // ---- Tor --------------------------------------------------------------
+
+    private fun setTor(on: Boolean, announce: Boolean = true) {
+        if (on && !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            Toast.makeText(this, R.string.tor_unsupported, Toast.LENGTH_LONG).show()
+            return
+        }
+        torEnabled = on
+        prefs().edit().putBoolean(PREF_TOR, on).apply()
+        tabs.forEach { updateTorScript(it) }
+        if (on) {
+            // Proxy kurulana kadar hiçbir isteğin doğrudan gitmemesi için
+            // önce erişilemeyen bir proxy'ye yönlendir.
+            applyProxy("socks5://127.0.0.1:9")
+            btnTor.visibility = View.VISIBLE
+            val dir = java.io.File(filesDir, "tor").path
+            thread(name = "zet-tor-start") {
+                val port = ZetCore.torStart(dir)
+                runOnUiThread {
+                    if (!torEnabled) return@runOnUiThread
+                    if (port > 0) {
+                        applyProxy("socks5://127.0.0.1:$port")
+                        current?.webView?.reload()
+                    }
+                    pollTor()
+                }
+            }
+            if (announce) Toast.makeText(this, getString(R.string.tor_starting, 0), Toast.LENGTH_SHORT).show()
+        } else {
+            torHandler.removeCallbacksAndMessages(null)
+            btnTor.visibility = View.GONE
+            ProxyController.getInstance().clearProxyOverride({ it.run() }) {
+                current?.webView?.reload()
+            }
+            thread(name = "zet-tor-stop") { ZetCore.torStop() }
+            if (announce) Toast.makeText(this, R.string.tor_disabled, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun applyProxy(rule: String) {
+        val config = ProxyConfig.Builder().addProxyRule(rule).build()
+        ProxyController.getInstance().setProxyOverride(config, { it.run() }) {}
+    }
+
+    /** Tor durumunu araç çubuğundaki 🧅 göstergesine yansıtır. */
+    private fun pollTor() {
+        torHandler.removeCallbacksAndMessages(null)
+        val st = JSONObject(ZetCore.torStatus())
+        when (st.optString("state")) {
+            "ready" -> {
+                btnTor.text = "🧅"
+                btnTor.alpha = 1f
+                if (btnTor.tag != "ready") {
+                    btnTor.tag = "ready"
+                    Toast.makeText(this, R.string.tor_ready, Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+            "failed" -> {
+                btnTor.text = "🧅!"
+                btnTor.alpha = 1f
+                btnTor.tag = "failed"
+                return
+            }
+            else -> {
+                btnTor.text = "🧅${st.optInt("progress")}"
+                btnTor.alpha = 0.55f
+                btnTor.tag = "starting"
+            }
+        }
+        torHandler.postDelayed(::pollTor, 700)
+    }
+
+    private fun showTorStatus() {
+        val st = JSONObject(ZetCore.torStatus())
+        val msg = when (st.optString("state")) {
+            "ready" -> getString(R.string.tor_ready)
+            "failed" -> getString(R.string.tor_failed) + ":\n" + st.optString("error")
+            "off" -> getString(R.string.tor_disabled)
+            else -> getString(R.string.tor_starting, st.optInt("progress"))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.tor_status_title)
+            .setMessage(msg + "\n\n" + getString(R.string.tor_info))
+            .setPositiveButton(R.string.ok, null)
+            .setNegativeButton(R.string.tor_off) { _, _ -> setTor(false) }
+            .show()
+    }
+
+    /** Tor açıkken WebRTC'yi kapatır (SOCKS'u atlayıp gerçek IP'yi sızdırabilir). */
+    private fun updateTorScript(tab: Tab, wv: WebView = tab.webView) {
+        if (!docStartSupported) return
+        if (torEnabled && tab.torScript == null) {
+            tab.torScript = WebViewCompat.addDocumentStartJavaScript(wv, NO_WEBRTC_JS, setOf("*"))
+        } else if (!torEnabled) {
+            tab.torScript?.remove()
+            tab.torScript = null
         }
     }
 
@@ -405,6 +516,7 @@ class BrowserActivity : Activity() {
             )
         }
         updateYoutubeScript(tab, wv)
+        updateTorScript(tab, wv)
         return wv
     }
 
@@ -535,6 +647,7 @@ class BrowserActivity : Activity() {
         menu.menu.add(0, 3, 2, R.string.new_tab)
         menu.menu.add(0, 4, 3, R.string.new_incognito_tab)
         menu.menu.add(0, 5, 4, R.string.share_page)
+        menu.menu.add(0, 6, 5, if (torEnabled) R.string.tor_off else R.string.tor_on)
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> wv.goForward()
@@ -542,6 +655,7 @@ class BrowserActivity : Activity() {
                 3 -> openTab(HOME_URL, incognito = false)
                 4 -> openIncognitoTab(HOME_URL)
                 5 -> wv.url?.let { shareText(it) }
+                6 -> setTor(!torEnabled)
             }
             true
         }
@@ -865,6 +979,7 @@ class BrowserActivity : Activity() {
     }
 
     override fun onDestroy() {
+        torHandler.removeCallbacksAndMessages(null)
         PlaybackService.controller = null
         PlaybackService.stop(this)
         tabs.forEach { it.webView.destroy() }
@@ -883,5 +998,10 @@ class BrowserActivity : Activity() {
         private const val PREF_LAST_URL = "last_url"
         private const val PREF_TABS = "tabs"
         private const val PREF_CURRENT_TAB = "current_tab"
+        private const val PREF_TOR = "tor_enabled"
+        private const val NO_WEBRTC_JS = "(function(){['RTCPeerConnection','webkitRTCPeerConnection'," +
+            "'RTCDataChannel','RTCSessionDescription','RTCIceCandidate'].forEach(function(k){" +
+            "try{Object.defineProperty(window,k,{value:undefined,writable:false,configurable:false})}" +
+            "catch(e){}});})();"
     }
 }

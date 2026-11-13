@@ -11,5 +11,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 zet-core = { path = "../zet-core" }
+zet-tor = { path = "../zet-tor" }
 jni = "0.21"
 serde_json = "1"

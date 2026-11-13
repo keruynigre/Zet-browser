@@ -1,0 +1,17 @@
+[package]
+name = "zet-tor"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Zet Browser built-in Tor: Arti client exposed as a local SOCKS5 proxy"
+
+[dependencies]
+arti-client = { version = "0.48", default-features = false, features = ["tokio", "rustls", "compression", "static-sqlite"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "sync"] }
+futures = "0.3"
+tor-rtcompat = { version = "=0.48.0", default-features = false, features = ["tokio"] }
+serde_json = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }

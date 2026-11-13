@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/zet-core", "crates/zet-android"]
+members = ["crates/zet-core", "crates/zet-android", "crates/zet-tor"]
 
 [workspace.package]
 edition = "2021"
