@@ -9,4 +9,6 @@
     <color name="icon_bg">#FF0F172A</color>
     <color name="incognito_bg">#FF2E1065</color>
     <color name="incognito_field">#FF4C1D95</color>
+    <color name="menu_bg">#FFFFFFFF</color>
+    <color name="divider">#FFE5E7EB</color>
 </resources>

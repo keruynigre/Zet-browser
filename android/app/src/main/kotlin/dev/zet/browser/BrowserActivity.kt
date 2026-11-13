@@ -57,7 +57,9 @@ class BrowserActivity : Activity() {
 
     /** Bir sekme: kendi WebView'u ve durumu. */
     private inner class Tab(val incognito: Boolean) {
+        val id = nextTabId++
         var title: String = ""
+        var thumb: android.graphics.Bitmap? = null
 
         /** Henüz yüklenmemiş (geri yüklenen) sekmenin adresi. */
         var pendingUrl: String? = null
@@ -77,7 +79,11 @@ class BrowserActivity : Activity() {
         val url: String? get() = webView.url ?: pendingUrl
     }
 
+    private var nextTabId = 1
     private val tabs = mutableListOf<Tab>()
+    private val recentlyClosed = ArrayDeque<Pair<String, String>>() // (başlık, adres)
+    private lateinit var tabSwitcher: TabSwitcher
+    private lateinit var db: ZetDb
     private var current: Tab? = null
     private var mediaTab: Tab? = null
 
@@ -86,8 +92,6 @@ class BrowserActivity : Activity() {
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
     private lateinit var shield: TextView
-    private lateinit var btnBack: TextView
-    private lateinit var btnForward: TextView
     private lateinit var btnTabs: TextView
     private lateinit var bottomBar: View
     private lateinit var urlField: View
@@ -122,8 +126,8 @@ class BrowserActivity : Activity() {
         urlBar = findViewById(R.id.urlBar)
         progress = findViewById(R.id.progress)
         shield = findViewById(R.id.btnShield)
-        btnBack = findViewById(R.id.btnBack)
-        btnForward = findViewById(R.id.btnForward)
+        db = ZetDb.get(this)
+        tabSwitcher = TabSwitcher(this, findViewById(R.id.root), SwitcherCallbacks())
         btnTabs = findViewById(R.id.btnTabs)
         bottomBar = findViewById(R.id.bottomBar)
         urlField = findViewById(R.id.urlField)
@@ -290,7 +294,10 @@ class BrowserActivity : Activity() {
     private fun selectTab(tab: Tab) {
         if (current === tab) return
         exitFullscreen()
-        current?.let { webContainer.removeView(it.webView) }
+        current?.let {
+            captureThumb(it)
+            webContainer.removeView(it.webView)
+        }
         current = tab
         webContainer.addView(
             tab.webView,
@@ -312,6 +319,12 @@ class BrowserActivity : Activity() {
         val index = tabs.indexOf(tab)
         if (index < 0) return
         tabs.removeAt(index)
+        if (!tab.incognito) {
+            tab.url?.takeIf { it.startsWith("http") && it != NTP_URL }?.let {
+                recentlyClosed.addFirst(tab.title to it)
+                while (recentlyClosed.size > 15) recentlyClosed.removeLast()
+            }
+        }
         if (mediaTab === tab) {
             mediaTab = null
             PlaybackService.stop(this)
@@ -350,9 +363,15 @@ class BrowserActivity : Activity() {
         urlBar.setTextColor(textColor)
         urlBar.setHintTextColor(if (dark) 0xFFC4B5FD.toInt() else getColor(R.color.text_dim))
         urlBar.setHint(if (dark) R.string.incognito_hint else R.string.url_hint)
-        listOf(btnBack, btnForward, btnTabs, findViewById<TextView>(R.id.btnMenu))
-            .forEach { it.setTextColor(textColor) }
-        btnTabs.background.mutate().setTint(textColor)
+        val tint = android.content.res.ColorStateList.valueOf(textColor)
+        listOf(R.id.btnHome, R.id.btnBookmarks, R.id.btnSearch, R.id.btnMenu)
+            .forEach { findViewById<android.widget.ImageView>(it).imageTintList = tint }
+        btnTabs.setTextColor(textColor)
+        // Sekme sayacı: içi boş, kenarlıklı kutu.
+        btnTabs.background = android.graphics.drawable.GradientDrawable().apply {
+            setStroke((2 * resources.displayMetrics.density).toInt(), textColor)
+            cornerRadius = 6 * resources.displayMetrics.density
+        }
         siteIcon.setTextColor(textColor)
     }
 
@@ -423,55 +442,55 @@ class BrowserActivity : Activity() {
     }
 
     private fun showTabSwitcher() {
-        val dp = resources.displayMetrics.density
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        lateinit var dialog: AlertDialog
+        hideKeyboard()
+        current?.let { captureThumb(it) }
+        tabSwitcher.show(current?.incognito == true)
+    }
 
-        fun row(tab: Tab): View = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding((16 * dp).toInt(), (6 * dp).toInt(), (4 * dp).toInt(), (6 * dp).toInt())
-            if (tab === current) setBackgroundColor(0x2216A34A)
-            val label = TextView(context).apply {
-                val name = tab.title.ifBlank { tab.url ?: getString(R.string.tab_untitled) }
-                text = (if (tab.incognito) "🕶 " else "") + name
-                textSize = 15f
-                maxLines = 2
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                setOnClickListener {
-                    selectTab(tab)
-                    dialog.dismiss()
-                }
-            }
-            val close = TextView(context).apply {
-                text = "✕"
-                textSize = 18f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt())
-                setOnClickListener {
-                    closeTab(tab)
-                    dialog.dismiss()
-                    if (tabs.size > 1) showTabSwitcher()
-                }
-            }
-            addView(label)
-            addView(close)
+    /** Sekmenin küçük ekran görüntüsünü alır (sekme ızgarası için). */
+    private fun captureThumb(tab: Tab) {
+        val wv = tab.webView
+        if (wv.width <= 0 || wv.height <= 0) return
+        runCatching {
+            val scale = 0.4f
+            val bmp = android.graphics.Bitmap.createBitmap(
+                (wv.width * scale).toInt(), (wv.height * scale).toInt(), android.graphics.Bitmap.Config.RGB_565,
+            )
+            val canvas = android.graphics.Canvas(bmp)
+            canvas.scale(scale, scale)
+            canvas.translate(-wv.scrollX.toFloat(), -wv.scrollY.toFloat())
+            wv.draw(canvas)
+            tab.thumb = bmp
+        }
+    }
+
+    private inner class SwitcherCallbacks : TabSwitcher.Callbacks {
+        override fun tabs() = this@BrowserActivity.tabs.map {
+            TabSwitcher.Info(
+                it.id, it.title, it.url?.takeIf { u -> u != NTP_URL } ?: "",
+                it.incognito, it.thumb, it === current,
+            )
         }
 
-        tabs.forEach { list.addView(row(it)) }
-        val scroll = ScrollView(this).apply { addView(list) }
-        dialog = AlertDialog.Builder(this)
-            .setTitle(getString(R.string.tabs) + " (${tabs.size})")
-            .setView(scroll)
-            .setPositiveButton(R.string.new_tab) { _, _ -> openTab(NTP_URL, incognito = false) }
-            .setNeutralButton(R.string.new_incognito_tab) { _, _ -> openIncognitoTab(NTP_URL) }
-            .setNegativeButton(R.string.close_incognito) { _, _ ->
-                tabs.filter { it.incognito }.forEach { closeTab(it) }
-            }
-            .create()
-        dialog.show()
-        if (tabs.none { it.incognito }) {
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.visibility = View.GONE
+        override fun select(id: Int) {
+            tabs.find { it.id == id }?.let { selectTab(it) }
+            tabSwitcher.hide()
+        }
+
+        override fun close(id: Int) {
+            tabs.find { it.id == id }?.let { closeTab(it) }
+            tabSwitcher.refresh()
+        }
+
+        override fun newTab(incognito: Boolean) {
+            tabSwitcher.hide()
+            if (incognito) openIncognitoTab(NTP_URL) else openTab(NTP_URL, incognito = false)
+        }
+
+        override fun closeAll(incognito: Boolean) {
+            tabs.filter { it.incognito == incognito }.forEach { closeTab(it) }
+            if (incognito && tabs.isNotEmpty()) selectTab(tabs.last())
+            tabSwitcher.refresh()
         }
     }
 
@@ -553,7 +572,7 @@ class BrowserActivity : Activity() {
                     }
                     if (mediaTab === tab) {
                         // Çalarken ekran kapanınca duraklatılmasın.
-                        tab.webView.keepPlaying = playing
+                        tab.webView.keepPlaying = playing && Settings.backgroundPlay(this@BrowserActivity)
                         PlaybackService.report(this@BrowserActivity, title, playing)
                     }
                 }
@@ -621,12 +640,11 @@ class BrowserActivity : Activity() {
     // ---- Araç çubuğu ------------------------------------------------------
 
     private fun setupToolbar() {
-        btnBack.setOnClickListener { current?.webView?.let { if (it.canGoBack()) it.goBack() } }
-        btnForward.setOnClickListener { current?.webView?.let { if (it.canGoForward()) it.goForward() } }
-        findViewById<View>(R.id.btnNewTab).setOnClickListener {
-            openTab(NTP_URL, incognito = current?.incognito == true)
-            focusUrlBar()
+        findViewById<View>(R.id.btnHome).setOnClickListener { current?.let { navigate(it, NTP_URL) } }
+        findViewById<View>(R.id.btnBookmarks).setOnClickListener {
+            startActivityForResult(LibraryActivity.intent(this, LibraryActivity.MODE_BOOKMARKS), REQ_LIBRARY)
         }
+        findViewById<View>(R.id.btnSearch).setOnClickListener { focusUrlBar() }
         btnTabs.setOnClickListener { showTabSwitcher() }
         findViewById<View>(R.id.btnMenu).setOnClickListener { showMenu(it) }
         btnDownload.setOnClickListener {
@@ -647,7 +665,7 @@ class BrowserActivity : Activity() {
             val isEnter = event?.keyCode == KeyEvent.KEYCODE_ENTER &&
                 event.action == KeyEvent.ACTION_DOWN
             if (actionId == EditorInfo.IME_ACTION_GO || isEnter) {
-                load(ZetCore.normalizeInput(urlBar.text.toString()))
+                load(normalize(urlBar.text.toString()))
                 hideKeyboard()
                 true
             } else {
@@ -660,25 +678,84 @@ class BrowserActivity : Activity() {
     }
 
     private fun showMenu(anchor: View) {
-        val wv = current?.webView ?: return
-        val menu = PopupMenu(this, anchor)
-        menu.menu.add(0, 2, 1, R.string.reload)
-        menu.menu.add(0, 3, 2, R.string.new_tab)
-        menu.menu.add(0, 4, 3, R.string.new_incognito_tab)
-        menu.menu.add(0, 5, 4, R.string.share_page)
-        menu.menu.add(0, 6, 5, if (torEnabled) R.string.tor_off else R.string.tor_on)
-        menu.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                2 -> if (current?.loading == true) wv.stopLoading() else wv.reload()
-                3 -> openTab(NTP_URL, incognito = false)
-                4 -> openIncognitoTab(NTP_URL)
-                5 -> wv.url?.takeIf { it != NTP_URL }?.let { shareText(it) }
-                6 -> setTor(!torEnabled)
-            }
-            true
-        }
-        menu.show()
+        val tab = current ?: return
+        val wv = tab.webView
+        val pageUrl = wv.url?.takeIf { it.startsWith("http") && it != NTP_URL }
+        val bookmarked = pageUrl != null && db.isBookmarked(pageUrl)
+        BrowserMenu(this).show(
+            anchor,
+            listOf(
+                BrowserMenu.Item(R.drawable.ic_add, R.string.new_tab) { openTab(NTP_URL, incognito = false) },
+                BrowserMenu.Item(R.drawable.ic_incognito, R.string.new_incognito_tab) { openIncognitoTab(NTP_URL) },
+                null,
+                BrowserMenu.Item(R.drawable.ic_history, R.string.history) {
+                    startActivityForResult(LibraryActivity.intent(this, LibraryActivity.MODE_HISTORY), REQ_LIBRARY)
+                },
+                BrowserMenu.Item(R.drawable.ic_download, R.string.downloads) {
+                    openExternal(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+                },
+                BrowserMenu.Item(R.drawable.ic_bookmarks, R.string.bookmarks) {
+                    startActivityForResult(LibraryActivity.intent(this, LibraryActivity.MODE_BOOKMARKS), REQ_LIBRARY)
+                },
+                BrowserMenu.Item(R.drawable.ic_recent_tabs, R.string.recent_tabs) { showRecentTabs() },
+                null,
+                BrowserMenu.Item(R.drawable.ic_settings, R.string.settings) {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                },
+                BrowserMenu.Item(R.drawable.ic_shield, R.string.tor_vpn, toggle = torEnabled) { setTor(!torEnabled) },
+                BrowserMenu.Item(R.drawable.ic_exit, R.string.exit) { exitApp() },
+            ),
+            listOf(
+                BrowserMenu.Action(R.drawable.ic_forward, R.string.forward, wv.canGoForward()) { wv.goForward() },
+                BrowserMenu.Action(R.drawable.ic_share, R.string.share_page, pageUrl != null) {
+                    pageUrl?.let { shareText(it) }
+                },
+                BrowserMenu.Action(
+                    if (bookmarked) R.drawable.ic_star_filled else R.drawable.ic_star,
+                    R.string.add_bookmark, pageUrl != null,
+                ) { pageUrl?.let { toggleBookmark(it, tab.title) } },
+                BrowserMenu.Action(R.drawable.ic_refresh, R.string.reload) {
+                    if (tab.loading) wv.stopLoading() else wv.reload()
+                },
+            ),
+        )
     }
+
+    private fun toggleBookmark(url: String, title: String) {
+        if (db.isBookmarked(url)) {
+            db.removeBookmark(url)
+            Toast.makeText(this, R.string.bookmark_removed, Toast.LENGTH_SHORT).show()
+        } else {
+            db.addBookmark(url, title)
+            Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showRecentTabs() {
+        if (recentlyClosed.isEmpty()) {
+            Toast.makeText(this, R.string.no_recent_tabs, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val list = recentlyClosed.toList()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.recent_tabs)
+            .setItems(list.map { it.first.ifBlank { it.second } }.toTypedArray()) { _, which ->
+                val (_, url) = list[which]
+                recentlyClosed.remove(list[which])
+                openTab(url, incognito = false)
+            }
+            .show()
+    }
+
+    private fun exitApp() {
+        saveTabs()
+        PlaybackService.stop(this)
+        finishAndRemoveTask()
+    }
+
+    /** Adres çubuğu girdisini seçili arama motoruyla URL'ye çevirir. */
+    private fun normalize(input: String): String =
+        ZetCore.normalizeInputWith(input, Settings.engine(this).prefix)
 
     /** Yeni sekme sayfası özel adres; diğerleri normal yüklenir. */
     private fun navigate(tab: Tab, url: String) {
@@ -705,9 +782,39 @@ class BrowserActivity : Activity() {
         }
         val tpl = assets.open("newtab.html").bufferedReader().use { it.readText() }
         return tpl
+            .replace("{{TILES}}", topSiteTiles())
             .replace("{{BLOCKED}}", java.text.NumberFormat.getInstance(java.util.Locale("tr")).format(blocked))
             .replace("{{SAVED}}", saved)
             .replace("{{MODE}}", mode)
+    }
+
+    /** Yeni sekme sayfası kısayolları: en çok ziyaret edilenler, yoksa varsayılanlar. */
+    private fun topSiteTiles(): String {
+        val defaults = listOf(
+            "YouTube" to "https://m.youtube.com", "Google" to "https://www.google.com",
+            "Vikipedi" to "https://tr.m.wikipedia.org", "X" to "https://x.com",
+            "Instagram" to "https://www.instagram.com", "Reddit" to "https://www.reddit.com",
+            "Ekşi" to "https://eksisozluk.com", "GitHub" to "https://github.com",
+        )
+        val visited = if (Settings.saveHistory(this)) {
+            runCatching { db.topSites(8) }.getOrDefault(emptyList())
+                .map { LibraryActivity.host(it.url) to it.url }
+        } else {
+            emptyList()
+        }
+        val seen = HashSet<String>()
+        val sites = (visited + defaults).filter { seen.add(LibraryActivity.host(it.second)) }.take(8)
+        val colors = listOf("#dc2626", "#2563eb", "#475569", "#0f766e", "#c026d3", "#ea580c", "#65a30d", "#7c3aed")
+        return sites.mapIndexed { i, (name, url) ->
+            val host = LibraryActivity.host(url)
+            val origin = Uri.parse(url).let { "${it.scheme}://${it.host}" }
+            val label = android.text.TextUtils.htmlEncode(name.removeSuffix(".com").take(12))
+            val letter = android.text.TextUtils.htmlEncode(LibraryActivity.siteLetter(url))
+            "<a class=\"tile\" href=\"${android.text.TextUtils.htmlEncode(url)}\">" +
+                "<div class=\"ic\" style=\"background:${colors[i % colors.size]}\">$letter" +
+                "<img src=\"$origin/favicon.ico\" alt=\"\" onerror=\"this.remove()\"></div>" +
+                "${if (label.isNotBlank()) label else android.text.TextUtils.htmlEncode(host)}</a>"
+        }.joinToString("")
     }
 
     private fun focusUrlBar() {
@@ -727,8 +834,11 @@ class BrowserActivity : Activity() {
     private fun showUrl(url: String?) {
         val isNtp = url == null || url == NTP_URL || url == "about:blank"
         if (!urlBar.hasFocus()) urlBar.setText(if (isNtp) "" else url)
-        siteIcon.visibility = if (isNtp) View.GONE else View.VISIBLE
-        siteIcon.text = if (url?.startsWith("https://") == true) "🔒" else "⚠"
+        siteIcon.text = when {
+            isNtp -> "🔍"
+            url?.startsWith("https://") == true -> "🔒"
+            else -> "⚠"
+        }
         val isVideo = url != null && ZetCore.ytVideoId(url).isNotEmpty()
         btnDownload.visibility = if (isVideo) View.VISIBLE else View.GONE
     }
@@ -743,11 +853,7 @@ class BrowserActivity : Activity() {
         }
     }
 
-    private fun updateNavButtons() {
-        val wv = current?.webView
-        btnBack.alpha = if (wv?.canGoBack() == true) 1f else 0.35f
-        btnForward.alpha = if (wv?.canGoForward() == true) 1f else 0.35f
-    }
+    private fun updateNavButtons() = Unit
 
     /** Gizlenecek reklam öğeleri için <style> enjekte eder. */
     private fun injectCosmetics(view: WebView, url: String?) {
@@ -834,6 +940,12 @@ class BrowserActivity : Activity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             tab.loading = false
+            if (!tab.incognito && url != null && url.startsWith("http") && url != NTP_URL &&
+                Settings.saveHistory(this@BrowserActivity)
+            ) {
+                val title = view.title?.takeIf { it != url } ?: ""
+                thread { runCatching { db.addVisit(url, title) } }
+            }
             injectCosmetics(view, url)
             if (tab !== current) return
             progress.visibility = View.GONE
@@ -857,6 +969,12 @@ class BrowserActivity : Activity() {
 
         override fun onReceivedTitle(view: WebView, title: String?) {
             tab.title = title ?: ""
+            val url = view.url
+            if (!tab.incognito && url != null && url.startsWith("http") && !title.isNullOrBlank() &&
+                Settings.saveHistory(this@BrowserActivity)
+            ) {
+                thread { runCatching { db.updateTitle(url, title) } }
+            }
         }
 
         /** target=_blank ve window.open: yalnızca kullanıcı dokunduysa yeni sekme aç. */
@@ -996,7 +1114,7 @@ class BrowserActivity : Activity() {
             Intent.ACTION_WEB_SEARCH -> intent.getStringExtra("query")
             else -> null
         } ?: return false
-        openTab(ZetCore.normalizeInput(target), incognito = false)
+        openTab(normalize(target), incognito = false)
         return true
     }
 
@@ -1013,6 +1131,7 @@ class BrowserActivity : Activity() {
     override fun onBackPressed() {
         val wv = current?.webView
         when {
+            tabSwitcher.isShowing -> tabSwitcher.hide()
             customView != null -> exitFullscreen()
             urlBar.hasFocus() -> {
                 urlBar.clearFocus(); hideKeyboard()
@@ -1032,8 +1151,29 @@ class BrowserActivity : Activity() {
 
     private fun prefs() = getSharedPreferences("zet", Context.MODE_PRIVATE)
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_LIBRARY || resultCode != RESULT_OK) return
+        val url = data?.getStringExtra(LibraryActivity.EXTRA_URL) ?: return
+        if (data.getBooleanExtra(LibraryActivity.EXTRA_NEW_TAB, false)) {
+            openTab(url, incognito = current?.incognito == true)
+        } else {
+            load(url)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        // Ayarlar ekranında değişmiş olabilir.
+        val adblock = prefs().getBoolean(PREF_ADBLOCK, true)
+        if (adblock != adblockEnabled) {
+            adblockEnabled = adblock
+            ZetCore.setEnabled(adblock)
+            tabs.forEach { updateYoutubeScript(it) }
+            updateShield()
+        }
         ytDownloader.startWatching()
     }
 
@@ -1058,6 +1198,7 @@ class BrowserActivity : Activity() {
         /** Yeni sekme sayfasının (yerel HTML) adresi. */
         private const val NTP_URL = "https://zet.local/newtab"
         private const val PREF_TOTAL_BLOCKED = "total_blocked"
+        private const val REQ_LIBRARY = 7
         private const val INCOGNITO_PREFIX = "zet-incognito-"
         private val YT_ORIGINS = setOf(
             "https://www.youtube.com", "https://m.youtube.com",

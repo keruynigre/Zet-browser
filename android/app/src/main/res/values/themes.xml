@@ -7,6 +7,13 @@
         <item name="android:navigationBarColor">@color/bar_bg</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+    <style name="BottomIcon">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:scaleType">center</item>
+        <item name="android:background">?android:attr/selectableItemBackgroundBorderless</item>
+    </style>
     <style name="BottomButton">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">match_parent</item>

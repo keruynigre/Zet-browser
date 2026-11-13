@@ -56,4 +56,7 @@ object ZetCore {
     external fun torStatus(): String
 
     external fun torStop()
+
+    /** [normalizeInput] gibi, ama aramalar için verilen arama motorunu kullanır. */
+    external fun normalizeInputWith(input: String, searchPrefix: String): String
 }

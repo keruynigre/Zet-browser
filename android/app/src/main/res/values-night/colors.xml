@@ -8,4 +8,6 @@
     <color name="accent_off">#FF6B7280</color>
     <color name="incognito_bg">#FF2E1065</color>
     <color name="incognito_field">#FF4C1D95</color>
+    <color name="menu_bg">#FF1F2937</color>
+    <color name="divider">#FF374151</color>
 </resources>

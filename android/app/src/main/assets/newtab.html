@@ -34,8 +34,10 @@
   .tile { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #e2e8f0; font-size: 12px; }
   .tile .ic {
     width: 54px; height: 54px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px;
+    font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; position: relative; overflow: hidden;
   }
+  .tile .ic img { position: absolute; inset: 0; margin: auto; width: 30px; height: 30px; background: #fff; border-radius: 8px; padding: 6px; box-sizing: content-box; }
+  .tile { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .foot { margin-top: auto; padding-top: 36px; font-size: 11px; color: #64748b; text-align: center; }
 </style>
 </head>
@@ -46,15 +48,7 @@
   </div>
   <div class="brand">Zet<span>.</span></div>
   <a class="search" href="zet://focus">🔍&nbsp; Ara veya adres yaz</a>
-  <div class="grid">
-    <a class="tile" href="https://m.youtube.com"><div class="ic" style="background:#dc2626">▶</div>YouTube</a>
-    <a class="tile" href="https://www.google.com"><div class="ic" style="background:#2563eb">G</div>Google</a>
-    <a class="tile" href="https://tr.m.wikipedia.org"><div class="ic" style="background:#475569">W</div>Vikipedi</a>
-    <a class="tile" href="https://x.com"><div class="ic" style="background:#0f172a;border:1px solid #334155">X</div>X</a>
-    <a class="tile" href="https://www.instagram.com"><div class="ic" style="background:#c026d3">I</div>Instagram</a>
-    <a class="tile" href="https://www.reddit.com"><div class="ic" style="background:#ea580c">R</div>Reddit</a>
-    <a class="tile" href="https://eksisozluk.com"><div class="ic" style="background:#65a30d">E</div>Ekşi</a>
-    <a class="tile" href="https://github.com"><div class="ic" style="background:#334155">⌥</div>GitHub</a>
+  <div class="grid">{{TILES}}
   </div>
   <div class="foot">{{MODE}}</div>
 </body>

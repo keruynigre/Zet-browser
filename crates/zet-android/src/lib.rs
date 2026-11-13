@@ -300,6 +300,20 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_torStop(_env: JNIEnv, _this:
     zet_tor::stop();
 }
 
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_normalizeInputWith(
+    mut env: JNIEnv,
+    _this: JObject,
+    input: JString,
+    search_prefix: JString,
+) -> jstring {
+    let text = read_string(&mut env, &input);
+    let prefix = read_string(&mut env, &search_prefix);
+    let prefix = if prefix.is_empty() { DEFAULT_SEARCH.to_string() } else { prefix };
+    let url = normalize_input(&text, &prefix);
+    new_string(&mut env, &url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
