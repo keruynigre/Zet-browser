@@ -10,94 +10,92 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+        <!-- Üst çubuk: yuvarlak adres alanı, kalkan içinde -->
         <LinearLayout
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="58dp"
             android:background="@color/bar_bg"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp">
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
 
-            <TextView
-                android:id="@+id/btnBack"
-                style="@style/BarButton"
-                android:contentDescription="@string/back"
-                android:text="‹" />
-
-            <EditText
-                android:id="@+id/urlBar"
+            <LinearLayout
+                android:id="@+id/urlField"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="42dp"
                 android:layout_weight="1"
                 android:background="@drawable/url_field_bg"
-                android:hint="@string/url_hint"
-                android:imeOptions="actionGo|flagNoExtractUi"
-                android:importantForAutofill="no"
-                android:inputType="textUri"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:selectAllOnFocus="true"
-                android:singleLine="true"
-                android:textColor="@color/text"
-                android:textColorHint="@color/text_dim"
-                android:textSize="15sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="4dp">
 
-            <TextView
-                android:id="@+id/btnDownload"
-                style="@style/BarButton"
-                android:contentDescription="@string/download_video"
-                android:text="⬇"
-                android:textColor="@color/accent"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/btnTor"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/tor"
+                    android:gravity="center"
+                    android:paddingEnd="6dp"
+                    android:text="🧅"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/btnTor"
-                android:layout_width="wrap_content"
-                android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/tor"
-                android:gravity="center"
-                android:paddingStart="4dp"
-                android:paddingEnd="2dp"
-                android:text="🧅"
-                android:textSize="14sp"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/siteIcon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:paddingEnd="6dp"
+                    android:text="🔒"
+                    android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/btnShield"
-                android:layout_width="wrap_content"
-                android:layout_height="44dp"
-                android:minWidth="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/shield"
-                android:gravity="center"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:textColor="@color/accent"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                <EditText
+                    android:id="@+id/urlBar"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="@string/url_hint"
+                    android:imeOptions="actionGo|flagNoExtractUi"
+                    android:importantForAutofill="no"
+                    android:inputType="textUri"
+                    android:selectAllOnFocus="true"
+                    android:singleLine="true"
+                    android:textColor="@color/text"
+                    android:textColorHint="@color/text_dim"
+                    android:textSize="15sp" />
 
-            <TextView
-                android:id="@+id/btnTabs"
-                android:layout_width="30dp"
-                android:layout_height="26dp"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="4dp"
-                android:background="@drawable/tab_count_bg"
-                android:contentDescription="@string/tabs"
-                android:gravity="center"
-                android:text="1"
-                android:textColor="@color/text"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/btnDownload"
+                    android:layout_width="38dp"
+                    android:layout_height="match_parent"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/download_video"
+                    android:gravity="center"
+                    android:text="⬇"
+                    android:textColor="@color/accent"
+                    android:textSize="18sp"
+                    android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/btnMenu"
-                style="@style/BarButton"
-                android:contentDescription="@string/menu"
-                android:text="⋮" />
+                <TextView
+                    android:id="@+id/btnShield"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="2dp"
+                    android:background="@drawable/shield_bg"
+                    android:contentDescription="@string/shield"
+                    android:gravity="center"
+                    android:minWidth="44dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:textColor="@android:color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <ProgressBar
@@ -165,6 +163,71 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1" />
+
+        <!-- Alt çubuk: geri, ileri, yeni sekme, sekmeler, menü -->
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:background="@color/bar_bg"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnBack"
+                style="@style/BottomButton"
+                android:contentDescription="@string/back"
+                android:text="‹" />
+
+            <TextView
+                android:id="@+id/btnForward"
+                style="@style/BottomButton"
+                android:contentDescription="@string/forward"
+                android:text="›" />
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1">
+
+                <TextView
+                    android:id="@+id/btnNewTab"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/new_tab_bg"
+                    android:contentDescription="@string/new_tab"
+                    android:gravity="center"
+                    android:text="+"
+                    android:textColor="@android:color/white"
+                    android:textSize="26sp" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1">
+
+                <TextView
+                    android:id="@+id/btnTabs"
+                    android:layout_width="28dp"
+                    android:layout_height="26dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/tab_count_bg"
+                    android:contentDescription="@string/tabs"
+                    android:gravity="center"
+                    android:text="1"
+                    android:textColor="@color/text"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/btnMenu"
+                style="@style/BottomButton"
+                android:contentDescription="@string/menu"
+                android:text="⋮" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- Tam ekran video (YouTube vb.) bu katmana yerleşir -->

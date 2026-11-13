@@ -72,7 +72,7 @@ class BrowserActivity : Activity() {
         var torScript: ScriptHandler? = null
 
         // En sonda: createWebView yukarıdaki alanlara yazar, önce onlar hazır olmalı.
-        val webView: WebView = createWebView(this)
+        val webView: ZetWebView = createWebView(this)
 
         val url: String? get() = webView.url ?: pendingUrl
     }
@@ -87,7 +87,12 @@ class BrowserActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var shield: TextView
     private lateinit var btnBack: TextView
+    private lateinit var btnForward: TextView
     private lateinit var btnTabs: TextView
+    private lateinit var bottomBar: View
+    private lateinit var urlField: View
+    private lateinit var siteIcon: TextView
+    private val totalBlocked = java.util.concurrent.atomic.AtomicLong(0)
     private lateinit var browserLayout: View
     private lateinit var fullscreenLayer: FrameLayout
     private lateinit var btnDownload: TextView
@@ -118,7 +123,11 @@ class BrowserActivity : Activity() {
         progress = findViewById(R.id.progress)
         shield = findViewById(R.id.btnShield)
         btnBack = findViewById(R.id.btnBack)
+        btnForward = findViewById(R.id.btnForward)
         btnTabs = findViewById(R.id.btnTabs)
+        bottomBar = findViewById(R.id.bottomBar)
+        urlField = findViewById(R.id.urlField)
+        siteIcon = findViewById(R.id.siteIcon)
         browserLayout = findViewById(R.id.browser)
         fullscreenLayer = findViewById(R.id.fullscreen)
         btnDownload = findViewById(R.id.btnDownload)
@@ -133,6 +142,7 @@ class BrowserActivity : Activity() {
         )
 
         adblockEnabled = prefs().getBoolean(PREF_ADBLOCK, true)
+        totalBlocked.set(prefs().getLong(PREF_TOTAL_BLOCKED, 0))
         ZetCore.setEnabled(adblockEnabled)
         CookieManager.getInstance().setAcceptCookie(true)
         deleteOldIncognitoProfiles()
@@ -161,7 +171,7 @@ class BrowserActivity : Activity() {
 
         restoreTabs()
         if (!handleIntent(intent) && tabs.isEmpty()) {
-            openTab(HOME_URL, incognito = false)
+            openTab(NTP_URL, incognito = false)
         }
     }
 
@@ -271,7 +281,7 @@ class BrowserActivity : Activity() {
         val tab = Tab(incognito)
         val index = current?.let { tabs.indexOf(it) + 1 } ?: tabs.size
         tabs.add(index.coerceIn(0, tabs.size), tab)
-        if (url != null) tab.webView.loadUrl(url)
+        if (url != null) navigate(tab, url)
         if (select) selectTab(tab)
         updateTabCount()
         return tab
@@ -288,7 +298,7 @@ class BrowserActivity : Activity() {
         )
         tab.pendingUrl?.let {
             tab.pendingUrl = null
-            tab.webView.loadUrl(it)
+            navigate(tab, it)
         }
         tab.webView.requestFocus()
         applyTabTheme(tab)
@@ -310,7 +320,7 @@ class BrowserActivity : Activity() {
             webContainer.removeView(tab.webView)
             current = null
             if (tabs.isEmpty()) {
-                openTab(HOME_URL, incognito = false)
+                openTab(NTP_URL, incognito = false)
             } else {
                 selectTab(tabs[(index - 1).coerceAtLeast(0)])
             }
@@ -325,27 +335,25 @@ class BrowserActivity : Activity() {
     }
 
     private fun applyTabTheme(tab: Tab) {
-        if (tab.incognito) {
-            toolbar.setBackgroundColor(getColor(R.color.incognito_bg))
-            urlBar.background.mutate().setTint(getColor(R.color.incognito_field))
-            urlBar.setTextColor(Color.WHITE)
-            urlBar.setHintTextColor(0xFFC4B5FD.toInt())
-            urlBar.setHint(R.string.incognito_hint)
-            listOf(btnBack, btnTabs, btnDownload).forEach { it.setTextColor(Color.WHITE) }
-            findViewById<TextView>(R.id.btnMenu).setTextColor(Color.WHITE)
-            window.statusBarColor = getColor(R.color.incognito_bg)
+        val dark = tab.incognito
+        val barColor = getColor(if (dark) R.color.incognito_bg else R.color.bar_bg)
+        val textColor = if (dark) Color.WHITE else getColor(R.color.text)
+        toolbar.setBackgroundColor(barColor)
+        bottomBar.setBackgroundColor(barColor)
+        window.statusBarColor = barColor
+        window.navigationBarColor = barColor
+        if (dark) {
+            urlField.background.mutate().setTint(getColor(R.color.incognito_field))
         } else {
-            toolbar.setBackgroundColor(getColor(R.color.bar_bg))
-            urlBar.background.mutate().setTintList(null)
-            urlBar.setTextColor(getColor(R.color.text))
-            urlBar.setHintTextColor(getColor(R.color.text_dim))
-            urlBar.setHint(R.string.url_hint)
-            listOf(btnBack, btnTabs).forEach { it.setTextColor(getColor(R.color.text)) }
-            btnDownload.setTextColor(getColor(R.color.accent))
-            findViewById<TextView>(R.id.btnMenu).setTextColor(getColor(R.color.text))
-            window.statusBarColor = getColor(R.color.bar_bg)
+            urlField.background.mutate().setTintList(null)
         }
-        btnTabs.background.mutate().setTint(if (tab.incognito) Color.WHITE else getColor(R.color.text))
+        urlBar.setTextColor(textColor)
+        urlBar.setHintTextColor(if (dark) 0xFFC4B5FD.toInt() else getColor(R.color.text_dim))
+        urlBar.setHint(if (dark) R.string.incognito_hint else R.string.url_hint)
+        listOf(btnBack, btnForward, btnTabs, findViewById<TextView>(R.id.btnMenu))
+            .forEach { it.setTextColor(textColor) }
+        btnTabs.background.mutate().setTint(textColor)
+        siteIcon.setTextColor(textColor)
     }
 
     /** Gizli oturumun profili (her oturumda yeni; kapanınca silinir). */
@@ -455,8 +463,8 @@ class BrowserActivity : Activity() {
         dialog = AlertDialog.Builder(this)
             .setTitle(getString(R.string.tabs) + " (${tabs.size})")
             .setView(scroll)
-            .setPositiveButton(R.string.new_tab) { _, _ -> openTab(HOME_URL, incognito = false) }
-            .setNeutralButton(R.string.new_incognito_tab) { _, _ -> openIncognitoTab(HOME_URL) }
+            .setPositiveButton(R.string.new_tab) { _, _ -> openTab(NTP_URL, incognito = false) }
+            .setNeutralButton(R.string.new_incognito_tab) { _, _ -> openIncognitoTab(NTP_URL) }
             .setNegativeButton(R.string.close_incognito) { _, _ ->
                 tabs.filter { it.incognito }.forEach { closeTab(it) }
             }
@@ -477,8 +485,8 @@ class BrowserActivity : Activity() {
     // ---- WebView kurulumu -------------------------------------------------
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView(tab: Tab): WebView {
-        val wv = WebView(this)
+    private fun createWebView(tab: Tab): ZetWebView {
+        val wv = ZetWebView(this)
         if (tab.incognito) {
             incognitoProfileName()?.let { WebViewCompat.setProfile(wv, it) }
         }
@@ -539,8 +547,15 @@ class BrowserActivity : Activity() {
         fun onState(playing: Boolean, title: String) {
             runOnUiThread {
                 if (tabs.contains(tab) && isYoutube(tab.webView.url)) {
-                    if (playing) mediaTab = tab
-                    if (mediaTab === tab) PlaybackService.report(this@BrowserActivity, title, playing)
+                    if (playing) {
+                        mediaTab?.webView?.keepPlaying = false
+                        mediaTab = tab
+                    }
+                    if (mediaTab === tab) {
+                        // Çalarken ekran kapanınca duraklatılmasın.
+                        tab.webView.keepPlaying = playing
+                        PlaybackService.report(this@BrowserActivity, title, playing)
+                    }
                 }
             }
         }
@@ -607,6 +622,11 @@ class BrowserActivity : Activity() {
 
     private fun setupToolbar() {
         btnBack.setOnClickListener { current?.webView?.let { if (it.canGoBack()) it.goBack() } }
+        btnForward.setOnClickListener { current?.webView?.let { if (it.canGoForward()) it.goForward() } }
+        findViewById<View>(R.id.btnNewTab).setOnClickListener {
+            openTab(NTP_URL, incognito = current?.incognito == true)
+            focusUrlBar()
+        }
         btnTabs.setOnClickListener { showTabSwitcher() }
         findViewById<View>(R.id.btnMenu).setOnClickListener { showMenu(it) }
         btnDownload.setOnClickListener {
@@ -642,7 +662,6 @@ class BrowserActivity : Activity() {
     private fun showMenu(anchor: View) {
         val wv = current?.webView ?: return
         val menu = PopupMenu(this, anchor)
-        menu.menu.add(0, 1, 0, R.string.forward).isEnabled = wv.canGoForward()
         menu.menu.add(0, 2, 1, R.string.reload)
         menu.menu.add(0, 3, 2, R.string.new_tab)
         menu.menu.add(0, 4, 3, R.string.new_incognito_tab)
@@ -650,11 +669,10 @@ class BrowserActivity : Activity() {
         menu.menu.add(0, 6, 5, if (torEnabled) R.string.tor_off else R.string.tor_on)
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                1 -> wv.goForward()
                 2 -> if (current?.loading == true) wv.stopLoading() else wv.reload()
-                3 -> openTab(HOME_URL, incognito = false)
-                4 -> openIncognitoTab(HOME_URL)
-                5 -> wv.url?.let { shareText(it) }
+                3 -> openTab(NTP_URL, incognito = false)
+                4 -> openIncognitoTab(NTP_URL)
+                5 -> wv.url?.takeIf { it != NTP_URL }?.let { shareText(it) }
                 6 -> setTor(!torEnabled)
             }
             true
@@ -662,31 +680,73 @@ class BrowserActivity : Activity() {
         menu.show()
     }
 
+    /** Yeni sekme sayfası özel adres; diğerleri normal yüklenir. */
+    private fun navigate(tab: Tab, url: String) {
+        if (url == NTP_URL) {
+            tab.webView.loadDataWithBaseURL(NTP_URL, newTabHtml(tab), "text/html", "utf-8", NTP_URL)
+        } else {
+            tab.webView.loadUrl(url)
+        }
+    }
+
+    private fun newTabHtml(tab: Tab): String {
+        val blocked = totalBlocked.get()
+        val savedSec = blocked * 50 / 1000 // istek başına ~50 ms
+        val saved = when {
+            savedSec >= 3600 -> "${savedSec / 3600} sa ${savedSec % 3600 / 60} dk"
+            savedSec >= 60 -> "${savedSec / 60} dk"
+            else -> "$savedSec sn"
+        }
+        val mode = when {
+            tab.incognito && torEnabled -> "Gizli sekme · Tor açık"
+            tab.incognito -> "Gizli sekme: geçmiş, çerez ve site verileri kaydedilmez"
+            torEnabled -> "Tor açık: trafiğin Tor ağından geçiyor"
+            else -> ""
+        }
+        val tpl = assets.open("newtab.html").bufferedReader().use { it.readText() }
+        return tpl
+            .replace("{{BLOCKED}}", java.text.NumberFormat.getInstance(java.util.Locale("tr")).format(blocked))
+            .replace("{{SAVED}}", saved)
+            .replace("{{MODE}}", mode)
+    }
+
+    private fun focusUrlBar() {
+        urlBar.requestFocus()
+        urlBar.selectAll()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(urlBar, InputMethodManager.SHOW_IMPLICIT)
+    }
+
     private fun load(url: String) {
         val tab = current ?: openTab(null, incognito = false)
         tab.pendingUrl = null
-        tab.webView.loadUrl(url)
+        navigate(tab, url)
         tab.webView.requestFocus()
     }
 
     private fun showUrl(url: String?) {
-        if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
+        val isNtp = url == null || url == NTP_URL || url == "about:blank"
+        if (!urlBar.hasFocus()) urlBar.setText(if (isNtp) "" else url)
+        siteIcon.visibility = if (isNtp) View.GONE else View.VISIBLE
+        siteIcon.text = if (url?.startsWith("https://") == true) "🔒" else "⚠"
         val isVideo = url != null && ZetCore.ytVideoId(url).isNotEmpty()
         btnDownload.visibility = if (isVideo) View.VISIBLE else View.GONE
     }
 
     private fun updateShield() {
         if (adblockEnabled) {
-            shield.text = "🛡${current?.blocked?.get() ?: 0}"
-            shield.setTextColor(getColor(R.color.accent))
+            shield.text = "🛡 ${current?.blocked?.get() ?: 0}"
+            shield.background.mutate().setTint(getColor(R.color.accent))
         } else {
-            shield.text = "🛡✕"
-            shield.setTextColor(getColor(R.color.accent_off))
+            shield.text = "🛡 " + getString(R.string.adblock_off_short)
+            shield.background.mutate().setTint(getColor(R.color.accent_off))
         }
     }
 
     private fun updateNavButtons() {
-        btnBack.alpha = if (current?.webView?.canGoBack() == true) 1f else 0.35f
+        val wv = current?.webView
+        btnBack.alpha = if (wv?.canGoBack() == true) 1f else 0.35f
+        btnForward.alpha = if (wv?.canGoForward() == true) 1f else 0.35f
     }
 
     /** Gizlenecek reklam öğeleri için <style> enjekte eder. */
@@ -718,6 +778,7 @@ class BrowserActivity : Activity() {
             }
             if (ZetCore.shouldBlock(url, tab.pageUrl, false) == 1) {
                 tab.blocked.incrementAndGet()
+                totalBlocked.incrementAndGet()
                 if (tab === current) runOnUiThread { updateShield() }
                 return WebResourceResponse(
                     "text/plain", "utf-8", 204, "No Content",
@@ -734,6 +795,10 @@ class BrowserActivity : Activity() {
             val uri = request.url
             return when (uri.scheme?.lowercase()) {
                 "http", "https", "about", "data", "javascript", "blob", "file" -> false
+                "zet" -> {
+                    if (uri.host == "focus") focusUrlBar()
+                    true
+                }
                 "intent" -> {
                     openIntentUri(view, uri.toString()); true
                 }
@@ -752,6 +817,7 @@ class BrowserActivity : Activity() {
                 view.evaluateJavascript(ZetCore.ytBackgroundScript(), null)
             }
             if (mediaTab === tab && !isYoutube(url)) {
+                tab.webView.keepPlaying = false
                 mediaTab = null
                 PlaybackService.stop(this@BrowserActivity)
             }
@@ -975,6 +1041,7 @@ class BrowserActivity : Activity() {
         super.onPause()
         ytDownloader.stopWatching()
         saveTabs()
+        prefs().edit().putLong(PREF_TOTAL_BLOCKED, totalBlocked.get()).apply()
         CookieManager.getInstance().flush()
     }
 
@@ -988,7 +1055,9 @@ class BrowserActivity : Activity() {
     }
 
     companion object {
-        private const val HOME_URL = "https://www.google.com"
+        /** Yeni sekme sayfasının (yerel HTML) adresi. */
+        private const val NTP_URL = "https://zet.local/newtab"
+        private const val PREF_TOTAL_BLOCKED = "total_blocked"
         private const val INCOGNITO_PREFIX = "zet-incognito-"
         private val YT_ORIGINS = setOf(
             "https://www.youtube.com", "https://m.youtube.com",
