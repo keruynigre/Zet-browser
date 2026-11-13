@@ -33,4 +33,18 @@
     <string name="pb_play">Oynat</string>
     <string name="pb_pause">Duraklat</string>
     <string name="pb_close">Kapat</string>
+    <string name="tabs">Sekmeler</string>
+    <string name="menu">Menü</string>
+    <string name="new_tab">Yeni sekme</string>
+    <string name="new_incognito_tab">Yeni gizli sekme</string>
+    <string name="incognito_hint">Gizli sekme · ara veya adres yaz</string>
+    <string name="incognito_limited">Bu cihazın WebView sürümü gizli sekme verilerini tam ayıramıyor; çerezler normal sekmelerle paylaşılabilir.</string>
+    <string name="close_incognito">Gizli sekmeleri kapat</string>
+    <string name="open_in_new_tab">Yeni sekmede aç</string>
+    <string name="open_in_incognito">Gizli sekmede aç</string>
+    <string name="copy_link">Bağlantıyı kopyala</string>
+    <string name="share_link">Bağlantıyı paylaş</string>
+    <string name="link_copied">Bağlantı kopyalandı</string>
+    <string name="share_page">Sayfayı paylaş</string>
+    <string name="tab_untitled">Yeni sekme</string>
 </resources>

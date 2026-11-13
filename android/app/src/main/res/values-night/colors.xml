@@ -6,4 +6,6 @@
     <color name="text_dim">#FF9CA3AF</color>
     <color name="accent">#FF22C55E</color>
     <color name="accent_off">#FF6B7280</color>
+    <color name="incognito_bg">#FF2E1065</color>
+    <color name="incognito_field">#FF4C1D95</color>
 </resources>
