@@ -264,30 +264,37 @@ pub fn safe_file_name(title: &str) -> String {
 /// değiştirdiği için burada tek yerde tutulur.
 struct Client {
     name: &'static str,
+    /// X-YouTube-Client-Name başlığı (InnerTube istemci numarası).
+    id: u32,
+    version: &'static str,
     context: &'static str,
     user_agent: &'static str,
 }
 
+// Değerler yt-dlp'nin istemci tanımlarından alınmıştır (Kasım 2026).
 const CLIENTS: &[Client] = &[
+    // URL'leri dosyanın tamamını sınırsız veriyor, PO token gerektirmiyor.
     Client {
-        name: "ANDROID_VR 1.65",
+        name: "VISIONOS",
+        id: 101,
+        version: "1.02",
+        context: r#"{"clientName":"VISIONOS","clientVersion":"1.02","deviceMake":"Apple","deviceModel":"RealityDevice17,1","osName":"visionOS","osVersion":"26.5.23O471"}"#,
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    },
+    // Ağustos 2026'dan beri yalnızca itag 18 (360p birleşik) jetonsuz iniyor.
+    Client {
+        name: "ANDROID_VR",
+        id: 28,
+        version: "1.65.10",
         context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.65.10","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
         user_agent: "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
     },
     Client {
-        name: "ANDROID_VR 1.62",
-        context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.62.27","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
-        user_agent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-    },
-    Client {
-        name: "ANDROID_VR 1.57",
-        context: r#"{"clientName":"ANDROID_VR","clientVersion":"1.57.29","deviceMake":"Oculus","deviceModel":"Quest 3","androidSdkVersion":32,"osName":"Android","osVersion":"12L"}"#,
-        user_agent: "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-    },
-    Client {
         name: "IOS",
-        context: r#"{"clientName":"IOS","clientVersion":"20.10.4","deviceMake":"Apple","deviceModel":"iPhone16,2","osName":"iPhone","osVersion":"18.3.2.22D82"}"#,
-        user_agent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+        id: 5,
+        version: "21.26.4",
+        context: r#"{"clientName":"IOS","clientVersion":"21.26.4","deviceMake":"Apple","deviceModel":"iPhone16,2","osName":"iPhone","osVersion":"18.3.2.22D82"}"#,
+        user_agent: "com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
     },
 ];
 
@@ -311,7 +318,9 @@ fn fetch_player(client: &Client, video_id: &str, visitor: Option<&str>) -> Resul
         .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
         .header("User-Agent", client.user_agent)
         .header("Content-Type", "application/json")
-        .header("Origin", "https://www.youtube.com");
+        .header("Origin", "https://www.youtube.com")
+        .header("X-YouTube-Client-Name", client.id.to_string())
+        .header("X-YouTube-Client-Version", client.version);
     if let Some(v) = visitor {
         req = req.header("X-Goog-Visitor-Id", v);
     }
@@ -363,13 +372,25 @@ fn probe_stream(stream: &Stream, user_agent: &str) -> Result<(), String> {
 fn try_client(client: &Client, video_id: &str, visitor: Option<&str>) -> Result<VideoInfo, String> {
     let json = fetch_player(client, video_id, visitor)?;
     let mut info = parse_player_response(&json, client.user_agent)?;
+    info.client = client.name.to_string();
     let options = download_options(&info);
     let first = options.first().ok_or("uygun format yok")?;
-    for stream in &first.streams {
-        probe_stream(stream, client.user_agent)?;
+    let best_err = match first.streams.iter().try_for_each(|s| probe_stream(s, client.user_agent)) {
+        Ok(()) => return Ok(info),
+        Err(e) => e,
+    };
+    // En iyi seçenek reddedildiyse birleşik (360p) akışı dene: bazı
+    // istemciler yalnızca onu jetonsuz veriyor. Olursa yalnızca onu sun.
+    if let Some(muxed) = options.iter().find(|o| o.kind == OptionKind::Muxed) {
+        let stream = &muxed.streams[0];
+        if probe_stream(stream, client.user_agent).is_ok() {
+            info.client = format!("{} (yalnızca {}p)", client.name, stream.height);
+            let keep = stream.itag;
+            info.streams.retain(|s| s.itag == keep);
+            return Ok(info);
+        }
     }
-    info.client = client.name.to_string();
-    Ok(info)
+    Err(best_err)
 }
 
 /// YouTube'un verdiği ziyaretçi kimliği (yanıttan okunur).
