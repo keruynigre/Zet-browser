@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.view.KeyEvent
@@ -15,6 +16,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -57,6 +59,7 @@ class BrowserActivity : Activity() {
     private val blockedOnPage = AtomicInteger(0)
     private var adblockEnabled = true
     private var ytScriptHandler: ScriptHandler? = null
+    private var ytBackgroundHandler: ScriptHandler? = null
     private val docStartSupported by lazy {
         WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
     }
@@ -134,6 +137,36 @@ class BrowserActivity : Activity() {
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
         updateYoutubeScript()
+
+        // Ekran kapalıyken / arka planda çalma.
+        if (Build.VERSION.SDK_INT >= 26) {
+            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        }
+        webView.addJavascriptInterface(MediaBridge(), "ZetMedia")
+        if (docStartSupported) {
+            ytBackgroundHandler = WebViewCompat.addDocumentStartJavaScript(
+                webView, ZetCore.ytBackgroundScript(), YT_ORIGINS,
+            )
+        }
+        PlaybackService.controller = { action ->
+            runOnUiThread {
+                webView.evaluateJavascript(
+                    "window.__zetMedia && window.__zetMedia(${JSONObject.quote(action)})", null,
+                )
+            }
+        }
+    }
+
+    /** Sayfadaki betiğin çalma durumunu bildirdiği köprü. */
+    private inner class MediaBridge {
+        @JavascriptInterface
+        fun onState(playing: Boolean, title: String) {
+            runOnUiThread {
+                if (isYoutube(webView.url)) {
+                    PlaybackService.report(this@BrowserActivity, title, playing)
+                }
+            }
+        }
     }
 
     /** YouTube reklam betiğini reklam engelleme ayarına göre ekler/kaldırır. */
@@ -276,9 +309,11 @@ class BrowserActivity : Activity() {
             progress.visibility = View.VISIBLE
             updateNavButtons()
             // Eski WebView'larda belge başı betiği yok: mümkün olan en erken anda enjekte et.
-            if (!docStartSupported && adblockEnabled && isYoutube(url)) {
-                view.evaluateJavascript(ZetCore.ytAdblockScript(), null)
+            if (!docStartSupported && isYoutube(url)) {
+                if (adblockEnabled) view.evaluateJavascript(ZetCore.ytAdblockScript(), null)
+                view.evaluateJavascript(ZetCore.ytBackgroundScript(), null)
             }
+            if (!isYoutube(url)) PlaybackService.stop(this@BrowserActivity)
         }
 
         override fun onPageCommitVisible(view: WebView, url: String?) {
@@ -472,6 +507,8 @@ class BrowserActivity : Activity() {
     }
 
     override fun onDestroy() {
+        PlaybackService.controller = null
+        PlaybackService.stop(this)
         webView.destroy()
         super.onDestroy()
     }

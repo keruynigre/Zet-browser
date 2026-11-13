@@ -270,6 +270,14 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_ytAdblockScript(
     new_string(&mut env, youtube::ADBLOCK_SCRIPT)
 }
 
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_ytBackgroundScript(
+    mut env: JNIEnv,
+    _this: JObject,
+) -> jstring {
+    new_string(&mut env, youtube::BACKGROUND_SCRIPT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

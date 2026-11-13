@@ -29,4 +29,8 @@
     <string name="dl_channel">İndirmeler</string>
     <string name="dl_done">İndirme tamamlandı</string>
     <string name="dl_background">İndirme başladı. Uygulamadan çıksan da bildirimden takip edebilirsin.</string>
+    <string name="pb_channel">Medya oynatma</string>
+    <string name="pb_play">Oynat</string>
+    <string name="pb_pause">Duraklat</string>
+    <string name="pb_close">Kapat</string>
 </resources>

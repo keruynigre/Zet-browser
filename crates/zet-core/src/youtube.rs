@@ -9,6 +9,9 @@ use serde::Serialize;
 
 /// YouTube sayfalarına belge başında enjekte edilecek reklam engelleme betiği.
 pub const ADBLOCK_SCRIPT: &str = include_str!("scripts/youtube_adblock.js");
+
+/// Ekran kapalıyken / arka planda çalmayı sağlayan betik (belge başında).
+pub const BACKGROUND_SCRIPT: &str = include_str!("scripts/youtube_background.js");
 use serde_json::Value;
 
 /// URL'den 11 karakterlik YouTube video kimliğini çıkarır.

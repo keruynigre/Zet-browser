@@ -45,4 +45,7 @@ object ZetCore {
 
     /** YouTube sayfalarına belge başında enjekte edilecek reklam engelleme betiği. */
     external fun ytAdblockScript(): String
+
+    /** Ekran kapalıyken YouTube çalmayı sağlayan betik. */
+    external fun ytBackgroundScript(): String
 }

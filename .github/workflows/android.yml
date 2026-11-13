@@ -34,7 +34,9 @@ jobs:
         run: cargo test --workspace
 
       - name: JavaScript testleri
-        run: node crates/zet-core/tests/js/youtube_adblock.test.mjs
+        run: |
+          node crates/zet-core/tests/js/youtube_adblock.test.mjs
+          node crates/zet-core/tests/js/youtube_background.test.mjs
 
       - name: Rust çekirdeğini Android için derle
         run: |
