@@ -174,6 +174,7 @@ pub fn yt_options_json(video_id: &str) -> String {
             "author": info.author,
             "fileName": youtube::safe_file_name(&info.title),
             "userAgent": info.user_agent,
+            "client": info.client,
             "options": youtube::download_options(&info),
         })
         .to_string(),

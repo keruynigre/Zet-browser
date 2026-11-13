@@ -78,6 +78,8 @@ pub struct VideoInfo {
     pub streams: Vec<Stream>,
     /// İndirme sırasında kullanılacak User-Agent (istemciyle uyumlu olmalı).
     pub user_agent: String,
+    /// Başarılı olan istemcinin adı (tanılama için).
+    pub client: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -133,6 +135,7 @@ pub fn parse_player_response(json: &Value, user_agent: &str) -> Result<VideoInfo
         duration_secs: num(&details["lengthSeconds"]),
         streams,
         user_agent: user_agent.to_string(),
+        client: String::new(),
     })
 }
 
@@ -288,10 +291,13 @@ const CLIENTS: &[Client] = &[
     },
 ];
 
-fn player_body(client: &Client, video_id: &str) -> Value {
+fn player_body(client: &Client, video_id: &str, visitor: Option<&str>) -> Value {
     let mut ctx: Value = serde_json::from_str(client.context).expect("geçerli JSON");
     ctx["hl"] = "tr".into();
     ctx["gl"] = "TR".into();
+    if let Some(v) = visitor {
+        ctx["visitorData"] = v.into();
+    }
     serde_json::json!({
         "videoId": video_id,
         "context": { "client": ctx },
@@ -300,13 +306,17 @@ fn player_body(client: &Client, video_id: &str) -> Value {
     })
 }
 
-fn fetch_player(client: &Client, video_id: &str) -> Result<Value, String> {
-    let mut resp = crate::net::agent()
+fn fetch_player(client: &Client, video_id: &str, visitor: Option<&str>) -> Result<Value, String> {
+    let mut req = crate::net::agent()
         .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
         .header("User-Agent", client.user_agent)
         .header("Content-Type", "application/json")
-        .header("Origin", "https://www.youtube.com")
-        .send_json(player_body(client, video_id))
+        .header("Origin", "https://www.youtube.com");
+    if let Some(v) = visitor {
+        req = req.header("X-Goog-Visitor-Id", v);
+    }
+    let mut resp = req
+        .send_json(player_body(client, video_id, visitor))
         .map_err(|e| format!("API isteği: {e}"))?;
     resp.body_mut()
         .with_config()
@@ -315,46 +325,82 @@ fn fetch_player(client: &Client, video_id: &str) -> Result<Value, String> {
         .map_err(|e| format!("API yanıtı okunamadı: {e}"))
 }
 
-/// Akışın gerçekten indirilebildiğini ilk 1 KB'ı isteyerek doğrular.
-/// (Bazı istemcilerin URL'leri ek doğrulama jetonu olmadan 403 döner.)
-fn probe_stream(stream: &Stream, user_agent: &str) -> Result<(), String> {
-    let url = crate::download::with_range(&stream.url, 0, 1023);
+/// Sınama için indirilen aralık boyutu. YouTube bazı istemcilerde ilk birkaç
+/// KB'a izin verip sonrasını 403 ile reddettiği için gerçekçi bir boyut seçildi.
+const PROBE_LEN: u64 = 1024 * 1024;
+
+fn probe_range(stream: &Stream, user_agent: &str, start: u64) -> Result<(), String> {
+    let end = start + PROBE_LEN - 1;
+    let url = crate::download::with_range(&stream.url, start, end);
+    let label = format!("itag {} [{start}-{end}]", stream.itag);
     let resp = crate::net::agent()
         .get(&url)
         .header("User-Agent", user_agent)
         .call()
-        .map_err(|e| format!("akış itag {}: {e}", stream.itag))?;
-    let mut body = Vec::new();
+        .map_err(|e| format!("{label}: {e}"))?;
     use std::io::Read;
-    resp.into_body()
-        .into_reader()
-        .take(2048)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("akış itag {}: {e}", stream.itag))?;
-    if body.is_empty() {
-        return Err(format!("akış itag {}: boş yanıt", stream.itag));
+    let n = std::io::copy(
+        &mut resp.into_body().into_reader().take(PROBE_LEN),
+        &mut std::io::sink(),
+    )
+    .map_err(|e| format!("{label}: {e}"))?;
+    if n == 0 {
+        return Err(format!("{label}: boş yanıt"));
     }
     Ok(())
 }
 
+/// Akışın gerçekten indirilebildiğini doğrular: baştan ve (büyükse) ortadan
+/// birer parça ister.
+fn probe_stream(stream: &Stream, user_agent: &str) -> Result<(), String> {
+    probe_range(stream, user_agent, 0)?;
+    if stream.size > 4 * PROBE_LEN {
+        probe_range(stream, user_agent, stream.size / 2)?;
+    }
+    Ok(())
+}
+
+fn try_client(client: &Client, video_id: &str, visitor: Option<&str>) -> Result<VideoInfo, String> {
+    let json = fetch_player(client, video_id, visitor)?;
+    let mut info = parse_player_response(&json, client.user_agent)?;
+    let options = download_options(&info);
+    let first = options.first().ok_or("uygun format yok")?;
+    for stream in &first.streams {
+        probe_stream(stream, client.user_agent)?;
+    }
+    info.client = client.name.to_string();
+    Ok(info)
+}
+
+/// YouTube'un verdiği ziyaretçi kimliği (yanıttan okunur).
+fn visitor_data(json: &Value) -> Option<String> {
+    json["responseContext"]["visitorData"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// Video bilgisini ağdan alır. İstemcileri sırayla dener; her birinde
-/// en iyi seçeneğin akışlarının indirilebildiğini doğrular.
+/// en iyi seçeneğin akışlarının indirilebildiğini doğrular. Bir istemci
+/// başarısız olursa YouTube'un verdiği ziyaretçi kimliğiyle bir kez daha dener.
 pub fn fetch_info(video_id: &str) -> Result<VideoInfo, String> {
     let mut errors = Vec::new();
+    let mut visitor: Option<String> = None;
     for client in CLIENTS {
-        let attempt = fetch_player(client, video_id)
-            .and_then(|json| parse_player_response(&json, client.user_agent))
-            .and_then(|info| {
-                let options = download_options(&info);
-                let first = options.first().ok_or("uygun format yok")?;
-                for stream in &first.streams {
-                    probe_stream(stream, client.user_agent)?;
-                }
-                Ok(info)
-            });
-        match attempt {
+        match try_client(client, video_id, None) {
             Ok(info) => return Ok(info),
             Err(e) => errors.push(format!("• {}: {e}", client.name)),
+        }
+        if visitor.is_none() {
+            visitor = fetch_player(client, video_id, None)
+                .ok()
+                .and_then(|j| visitor_data(&j));
+        }
+        if let Some(v) = visitor.as_deref() {
+            match try_client(client, video_id, Some(v)) {
+                Ok(info) => return Ok(info),
+                Err(e) => errors.push(format!("• {} + visitor: {e}", client.name)),
+            }
         }
     }
     Err(format!(
@@ -454,6 +500,13 @@ mod tests {
     }
 
     #[test]
+    fn reads_visitor_data() {
+        let j = json!({"responseContext": {"visitorData": "Cgt4"}});
+        assert_eq!(visitor_data(&j).as_deref(), Some("Cgt4"));
+        assert_eq!(visitor_data(&json!({})), None);
+    }
+
+    #[test]
     fn sanitizes_file_names() {
         assert_eq!(safe_file_name("Test: Video/1?"), "Test_ Video_1_");
         assert_eq!(safe_file_name("  ...  "), "video");
@@ -463,8 +516,12 @@ mod tests {
     #[test]
     fn client_contexts_are_valid_json() {
         for c in CLIENTS {
-            let body = player_body(c, "dQw4w9WgXcQ");
+            let body = player_body(c, "dQw4w9WgXcQ", Some("VIS"));
             assert_eq!(body["context"]["client"]["hl"], "tr");
+            assert_eq!(body["context"]["client"]["visitorData"], "VIS");
+            assert!(player_body(c, "dQw4w9WgXcQ", None)["context"]["client"]
+                .get("visitorData")
+                .is_none());
             assert!(body["context"]["client"]["clientName"].is_string());
         }
     }

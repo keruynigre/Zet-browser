@@ -68,7 +68,7 @@ class YouTubeDownloader(
             if (size > 0) "${o.getString("label")}  ·  ${formatSize(size)}" else o.getString("label")
         }
         AlertDialog.Builder(activity)
-            .setTitle(json.optString("title"))
+            .setTitle(json.optString("title") + "\n(" + json.optString("client") + ")")
             .setItems(labels) { _, which -> begin(json, options.getJSONObject(which)) }
             .setNegativeButton(R.string.cancel, null)
             .show()
