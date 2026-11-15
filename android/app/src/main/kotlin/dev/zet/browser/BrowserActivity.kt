@@ -269,7 +269,6 @@ class BrowserActivity : Activity() {
             if (announce) Toast.makeText(this, getString(R.string.tor_starting, 0), Toast.LENGTH_SHORT).show()
         } else {
             torHandler.removeCallbacksAndMessages(null)
-        uiHandler.removeCallbacksAndMessages(null)
             btnTor.visibility = View.GONE
             ProxyController.getInstance().clearProxyOverride({ it.run() }) {
                 current?.webView?.reload()
@@ -1020,6 +1019,8 @@ class BrowserActivity : Activity() {
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             promptSavePassword(tab)
+            // YouTube'da dokunarak açılan video sessiz başlamasın.
+            view.settings.mediaPlaybackRequiresUserGesture = !isYoutube(url)
             tab.blocked.set(0)
             tab.loading = true
             // Eski WebView'larda belge başı betiği yok: mümkün olan en erken anda enjekte et.
@@ -1290,6 +1291,8 @@ class BrowserActivity : Activity() {
     /** Genel gizleme kuralları: sayfadaki sınıf/kimliklere göre Rust motorundan alınır. */
     private fun injectGenericCosmetics(tab: Tab, url: String?) {
         if (!adblockEnabled || !isWebPage(url) || !tabs.contains(tab)) return
+        // YouTube'un kendi reklam betiği var; genel kurallar sayfa öğelerini gizleyebiliyor.
+        if (isYoutube(url)) return
         val wv = tab.webView
         if (wv.url != url) return
         wv.evaluateJavascript(PageScripts.COLLECT_CLASS_IDS) { res ->
@@ -1890,6 +1893,7 @@ class BrowserActivity : Activity() {
     }
 
     override fun onDestroy() {
+        uiHandler.removeCallbacksAndMessages(null)
         torHandler.removeCallbacksAndMessages(null)
         PlaybackService.controller = null
         PlaybackService.stop(this)
@@ -1916,7 +1920,7 @@ class BrowserActivity : Activity() {
         private const val PREF_TOR = "tor_enabled"
         private const val NO_WEBRTC_JS = "(function(){['RTCPeerConnection','webkitRTCPeerConnection'," +
             "'RTCDataChannel','RTCSessionDescription','RTCIceCandidate'].forEach(function(k){" +
-            "try{Object.defineProperty(window,k,{value:undefined,writable:false,configurable:false})}" +
+            "try{Object.defineProperty(window,k,{get:function(){return undefined},set:function(){},configurable:false})}" +
             "catch(e){}});})();"
     }
 }
