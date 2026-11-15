@@ -124,4 +124,47 @@
     <string name="cookie_banners">Çerez uyarılarını gizle</string>
     <string name="cookie_banners_desc">\"Çerezleri kabul et\" pencerelerini engeller (uygulama yeniden açılınca)</string>
     <string name="settings_display">Görünüm</string>
+
+    <!-- Güncelleme -->
+    <string name="update_channel">Güncellemeler</string>
+    <string name="update_checking">Güncelleme denetleniyor…</string>
+    <string name="update_check_failed">Güncelleme denetlenemedi</string>
+    <string name="update_none">Zet güncel</string>
+    <string name="update_available_title">Yeni Zet sürümü var</string>
+    <string name="update_available_text">%s yüklemeye hazır. Dokun.</string>
+    <string name="update_dialog_msg">Yeni sürüm: %1$s\nKurulu sürüm: android-%2$d</string>
+    <string name="update_now">Güncelle</string>
+    <string name="update_later">Sonra</string>
+    <string name="update_skip">Bu sürümü atla</string>
+    <string name="update_downloading">Güncelleme indiriliyor…</string>
+    <string name="update_failed">Güncelleme başarısız</string>
+    <string name="update_ready">Güncelleme hazır, kurmak için dokun</string>
+    <string name="check_updates">Güncellemeleri denetle</string>
+    <string name="auto_update">Otomatik güncelleme denetimi</string>
+    <string name="auto_update_desc">Açılışta GitHub\'da yeni sürüm var mı bakar ve uyarır</string>
+
+    <!-- Şifreler -->
+    <string name="passwords">Kayıtlı şifreler</string>
+    <string name="passwords_desc">%d şifre, cihazda şifreli saklanıyor</string>
+    <string name="save_passwords">Şifreleri kaydet</string>
+    <string name="save_passwords_desc">Giriş yapınca kaydetmeyi önerir, sonra otomatik doldurur</string>
+    <string name="pw_save_q">%s için şifre kaydedilsin mi?</string>
+    <string name="pw_update_q">%s için kayıtlı şifre güncellensin mi?</string>
+    <string name="save">Kaydet</string>
+    <string name="never">Asla</string>
+    <string name="pw_saved">Şifre kaydedildi</string>
+    <string name="no_passwords">Kayıtlı şifre yok</string>
+    <string name="pw_show">Göster</string>
+    <string name="pw_copy">Şifreyi kopyala</string>
+    <string name="pw_copied">Şifre kopyalandı</string>
+    <string name="no_username">(kullanıcı adı yok)</string>
+
+    <!-- Diğer -->
+    <string name="qr_scan">QR kod tara</string>
+    <string name="qr_failed">QR tarayıcı açılamadı (Google Play Hizmetleri gerekli)</string>
+    <string name="pull_refresh">Aşağı çekip yenile</string>
+    <string name="pull_refresh_desc">Sayfanın en üstünde aşağı çekince yeniler</string>
+    <string name="https_first">Önce HTTPS</string>
+    <string name="https_first_desc">http:// adresleri güvenli bağlantıyla açmayı dener</string>
+    <string name="https_fallback">Güvenli bağlantı yok, http ile açılıyor</string>
 </resources>

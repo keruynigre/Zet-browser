@@ -97,6 +97,42 @@ object PageScripts {
       return 'ok';
     })()"""
 
+    /** Ortak yardımcılar: görünürlük ve şifre alanının kullanıcı adı eşi. */
+    private const val PW_HELPERS = """
+      function zv(e){return !!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);}
+      function zpair(pw){var root=pw.form||document,ins=[].slice.call(root.querySelectorAll('input'));
+        var idx=ins.indexOf(pw);
+        for(var i=idx-1;i>=0;i--){var t=(ins[i].type||'text').toLowerCase();
+          if((t==='text'||t==='email'||t==='tel')&&zv(ins[i]))return ins[i];}
+        return null;}"""
+
+    /**
+     * Giriş formlarını izler: gönderim / düğme / Enter anında dolu şifre alanını
+     * ZetPw.offer(kullanıcı, şifre) ile bildirir. Kaydetme sorusu sayfa
+     * değişince sorulur (göz düğmesi vb. yanlış tetiklemeleri önlemek için).
+     */
+    val PW_CAPTURE = """(function(){if(window.__zetPw)return;window.__zetPw=1;$PW_HELPERS
+      function grab(){var pws=[].slice.call(document.querySelectorAll('input[type=password]'))
+          .filter(function(p){return p.value;});
+        if(!pws.length||!window.ZetPw)return;var pw=pws[0],u=zpair(pw);
+        try{ZetPw.offer(u?u.value:'',pw.value);}catch(e){}}
+      document.addEventListener('submit',grab,true);
+      document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&
+        e.target.closest('button,input[type=submit],[role=button]');if(b)setTimeout(grab,0);},true);
+      document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target&&
+        e.target.type==='password')grab();},true);
+    })();"""
+
+    /** Boş şifre alanını (ve eşi boş kullanıcı alanını) doldurur. Dönüş: 1 = dolduruldu. */
+    fun pwFill(user: String, pass: String): String = """(function(u,p){$PW_HELPERS
+      var pws=[].slice.call(document.querySelectorAll('input[type=password]')).filter(zv);
+      if(!pws.length)return 0;var pw=pws[0];if(pw.value)return 0;
+      function set(e,v){var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+        d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));
+        e.dispatchEvent(new Event('change',{bubbles:true}));}
+      var us=zpair(pw);if(us&&!us.value&&u)set(us,u);set(pw,p);return 1;
+    })(${org.json.JSONObject.quote(user)},${org.json.JSONObject.quote(pass)})"""
+
     /** Masaüstü tarayıcı kimliği; Chrome sürümü mobil kimlikten alınır. */
     fun desktopUserAgent(mobileUa: String): String {
         val chrome = Regex("Chrome/([\\d.]+)").find(mobileUa)?.groupValues?.get(1) ?: "130.0.0.0"

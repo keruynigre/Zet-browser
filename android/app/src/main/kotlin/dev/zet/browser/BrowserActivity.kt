@@ -20,6 +20,12 @@ import android.print.PrintManager
 import android.text.Editable
 import android.text.TextWatcher
 import android.webkit.GeolocationPermissions
+import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
+import android.net.http.SslError
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.widget.BaseAdapter
@@ -92,6 +98,14 @@ class BrowserActivity : Activity() {
         var desktop = false
         var mobileUa = ""
 
+        /** Kaydedilmeyi bekleyen giriş bilgisi: (kaynak, kullanıcı, şifre). */
+        var pendingPw: Triple<String, String, String>? = null
+
+        /** HTTPS-önce: yükseltilen http adresi ve zamanı (geri düşmek için). */
+        var upgradedFrom: String? = null
+        var upgradedHost: String? = null
+        var upgradedAt = 0L
+
         // En sonda: createWebView yukarıdaki alanlara yazar, önce onlar hazır olmalı.
         val webView: ZetWebView = createWebView(this)
 
@@ -134,6 +148,9 @@ class BrowserActivity : Activity() {
 
     /** Bu oturumda sitelere verilen izin kararları (kaynak anahtarı -> izin). */
     private val siteDecisions = HashMap<String, Boolean>()
+    private lateinit var pullIndicator: TextView
+    private val passwords by lazy { PasswordStore.get(this) }
+    private val httpsExempt = HashSet<String>()
     private var appliedTextZoom = 100
     private var appliedDarkPages = false
 
@@ -190,6 +207,7 @@ class BrowserActivity : Activity() {
         setupToolbar()
         setupFindBar()
         setupSuggestions()
+        pullIndicator = findViewById(R.id.pullIndicator)
 
         PlaybackService.controller = { action ->
             runOnUiThread {
@@ -215,6 +233,9 @@ class BrowserActivity : Activity() {
         restoreTabs()
         if (!handleIntent(intent) && tabs.isEmpty()) {
             openTab(NTP_URL, incognito = false)
+        }
+        if (intent?.getBooleanExtra(Updater.EXTRA_SHOW_UPDATE, false) != true) {
+            Updater.check(this, manual = false)
         }
     }
 
@@ -571,6 +592,13 @@ class BrowserActivity : Activity() {
                 .replace(Regex("Version/\\d+\\.\\d+ "), "")
         }
         tab.mobileUa = wv.settings.userAgentString
+        wv.addJavascriptInterface(PwBridge(tab), "ZetPw")
+        wv.pullEnabled = Settings.pullRefresh(this)
+        wv.onPull = { dy -> if (tab === current) showPull(dy, wv.pullThreshold) }
+        wv.onPullEnd = { refresh ->
+            hidePull()
+            if (refresh) wv.reload()
+        }
         wv.setFindListener { active, total, _ ->
             if (tab === current && findBar.visibility == View.VISIBLE) {
                 findCount.text = if (total == 0) "0/0" else "${active + 1}/$total"
@@ -751,6 +779,7 @@ class BrowserActivity : Activity() {
                 },
                 BrowserMenu.Item(R.drawable.ic_recent_tabs, R.string.recent_tabs) { showRecentTabs() },
                 null,
+                BrowserMenu.Item(R.drawable.ic_qr, R.string.qr_scan) { scanQr() },
                 BrowserMenu.Item(R.drawable.ic_find, R.string.find_in_page) { openFind() },
                 BrowserMenu.Item(R.drawable.ic_reader, R.string.reader_mode) { toggleReader(tab) },
                 BrowserMenu.Item(R.drawable.ic_translate, R.string.translate_page) {
@@ -831,7 +860,7 @@ class BrowserActivity : Activity() {
         if (url == NTP_URL) {
             tab.webView.loadDataWithBaseURL(NTP_URL, newTabHtml(tab), "text/html", "utf-8", NTP_URL)
         } else {
-            tab.webView.loadUrl(url)
+            tab.webView.loadUrl(httpsUpgrade(tab, url) ?: url)
         }
     }
 
@@ -968,6 +997,12 @@ class BrowserActivity : Activity() {
             request: WebResourceRequest,
         ): Boolean {
             val uri = request.url
+            if (request.isForMainFrame && uri.scheme == "http" && request.method == "GET") {
+                httpsUpgrade(tab, uri.toString())?.let {
+                    view.loadUrl(it)
+                    return true
+                }
+            }
             return when (uri.scheme?.lowercase()) {
                 "http", "https", "about", "data", "javascript", "blob", "file" -> false
                 "zet" -> {
@@ -984,6 +1019,7 @@ class BrowserActivity : Activity() {
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            promptSavePassword(tab)
             tab.blocked.set(0)
             tab.loading = true
             // Eski WebView'larda belge başı betiği yok: mümkün olan en erken anda enjekte et.
@@ -1006,6 +1042,21 @@ class BrowserActivity : Activity() {
         override fun onPageCommitVisible(view: WebView, url: String?) {
             injectCosmetics(view, url)
             applyPageExtras(tab, url)
+            // Sayfa güvenli bağlantıyla açıldı: yükseltme başarılı.
+            if (url?.startsWith("https://") == true && Uri.parse(url).host == tab.upgradedHost) {
+                tab.upgradedFrom = null
+                tab.upgradedHost = null
+            }
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            if (request.isForMainFrame) fallbackToHttp(tab, request.url.toString())
+        }
+
+        @SuppressLint("WebViewClientOnReceivedSslError")
+        override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+            handler.cancel() // varsayılan davranış: geçersiz sertifikayı kabul etme
+            fallbackToHttp(tab, error.url)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
@@ -1019,6 +1070,7 @@ class BrowserActivity : Activity() {
             injectCosmetics(view, url)
             applyPageExtras(tab, url)
             injectGenericCosmetics(tab, url)
+            setupPasswords(tab, url)
             // Sonradan beliren çerez uyarıları için bir tur daha.
             uiHandler.postDelayed({ injectGenericCosmetics(tab, url) }, 2500)
             if (tab !== current) return
@@ -1028,6 +1080,8 @@ class BrowserActivity : Activity() {
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+            // Sayfa yenilenmeden adres değişen (SPA) girişler için.
+            if (!isReload) promptSavePassword(tab)
             if (tab !== current) return
             showUrl(url)
             updateNavButtons()
@@ -1382,6 +1436,136 @@ class BrowserActivity : Activity() {
         return out
     }
 
+    // ---- Şifreler -------------------------------------------------------
+
+    /** Sayfadaki giriş formlarının bildirdiği kullanıcı adı/şifre. */
+    private inner class PwBridge(private val tab: Tab) {
+        @JavascriptInterface
+        fun offer(user: String, pass: String) {
+            runOnUiThread {
+                if (tab.incognito || !Settings.savePasswords(this@BrowserActivity) || pass.isEmpty()) return@runOnUiThread
+                val origin = PasswordStore.originOf(tab.webView.url) ?: return@runOnUiThread
+                if (passwords.isNever(origin)) return@runOnUiThread
+                val same = passwords.forOrigin(origin).any { it.user == user && it.pass == pass }
+                tab.pendingPw = if (same) null else Triple(origin, user, pass)
+            }
+        }
+    }
+
+    private fun promptSavePassword(tab: Tab) {
+        val (origin, user, pass) = tab.pendingPw ?: return
+        tab.pendingPw = null
+        if (isFinishing) return
+        val host = Uri.parse(origin).host ?: origin
+        val update = passwords.forOrigin(origin).any { it.user == user }
+        AlertDialog.Builder(this)
+            .setTitle(getString(if (update) R.string.pw_update_q else R.string.pw_save_q, host))
+            .setMessage(user.ifEmpty { getString(R.string.no_username) } + "\n" + "•".repeat(pass.length.coerceAtMost(12)))
+            .setPositiveButton(R.string.save) { _, _ ->
+                passwords.save(origin, user, pass)
+                Toast.makeText(this, R.string.pw_saved, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.update_later, null)
+            .setNeutralButton(R.string.never) { _, _ -> passwords.setNever(origin) }
+            .show()
+    }
+
+    /** Giriş formlarını izlemeye başlar ve kayıtlı şifre varsa doldurur. */
+    private fun setupPasswords(tab: Tab, url: String?) {
+        if (!isWebPage(url) || !Settings.savePasswords(this)) return
+        val wv = tab.webView
+        wv.evaluateJavascript(PageScripts.PW_CAPTURE, null)
+        val origin = PasswordStore.originOf(url) ?: return
+        val cred = passwords.forOrigin(origin).firstOrNull() ?: return
+        val fill = {
+            if (tabs.contains(tab) && wv.url == url) {
+                wv.evaluateJavascript(PageScripts.pwFill(cred.user, cred.pass)) { r ->
+                    if (r == "1") passwords.markUsed(cred)
+                }
+            }
+        }
+        fill()
+        uiHandler.postDelayed(fill, 1500) // geç yüklenen giriş formları
+    }
+
+    // ---- HTTPS-önce ------------------------------------------------------
+
+    private fun isLocalHost(host: String) =
+        host == "localhost" || !host.contains('.') || host.endsWith(".local") || host.endsWith(".lan") ||
+            host.endsWith(".internal") || Regex("""^[\d.]+$""").matches(host) || host.contains(':')
+
+    /** http adresinin https karşılığı; yükseltilmemesi gerekiyorsa null. */
+    private fun httpsUpgrade(tab: Tab, url: String): String? {
+        if (!url.startsWith("http://") || !Settings.httpsFirst(this)) return null
+        val host = Uri.parse(url).host ?: return null
+        if (host in httpsExempt || isLocalHost(host)) return null
+        val now = System.currentTimeMillis()
+        // Site https'den http'ye geri yönlendiriyor: döngüye girmeden http'ye izin ver.
+        if (tab.upgradedHost == host && now - tab.upgradedAt < 10_000) {
+            httpsExempt += host
+            tab.upgradedFrom = null
+            tab.upgradedHost = null
+            return null
+        }
+        tab.upgradedFrom = url
+        tab.upgradedHost = host
+        tab.upgradedAt = now
+        return "https://" + url.removePrefix("http://")
+    }
+
+    /** Yükseltilmiş https adresi açılamadıysa özgün http adresine döner. */
+    private fun fallbackToHttp(tab: Tab, failedUrl: String?) {
+        val from = tab.upgradedFrom ?: return
+        val host = Uri.parse(failedUrl ?: return).host ?: return
+        if (host != tab.upgradedHost || System.currentTimeMillis() - tab.upgradedAt > 30_000) return
+        httpsExempt += host
+        tab.upgradedFrom = null
+        tab.upgradedHost = null
+        runOnUiThread {
+            Toast.makeText(this, R.string.https_fallback, Toast.LENGTH_SHORT).show()
+            if (tabs.contains(tab)) tab.webView.loadUrl(from)
+        }
+    }
+
+    // ---- Aşağı çekip yenileme ----------------------------------------------
+
+    private fun showPull(dy: Float, threshold: Float) {
+        val d = dy.coerceAtMost(threshold * 1.5f)
+        pullIndicator.visibility = View.VISIBLE
+        pullIndicator.animate().cancel()
+        pullIndicator.alpha = (dy / threshold).coerceIn(0.2f, 1f)
+        pullIndicator.translationY = d * 0.7f
+        pullIndicator.rotation = d * 1.5f
+        pullIndicator.setTextColor(getColor(if (dy >= threshold) R.color.accent else R.color.text_dim))
+    }
+
+    private fun hidePull() {
+        pullIndicator.animate().alpha(0f).translationY(0f).setDuration(180)
+            .withEndAction { pullIndicator.visibility = View.GONE }
+            .start()
+    }
+
+    // ---- QR ----------------------------------------------------------------
+
+    private fun scanQr() {
+        try {
+            val opts = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .enableAutoZoom()
+                .build()
+            GmsBarcodeScanning.getClient(this, opts).startScan()
+                .addOnSuccessListener { code ->
+                    val value = code.url?.url ?: code.rawValue ?: return@addOnSuccessListener
+                    load(normalize(value))
+                }
+                .addOnFailureListener {
+                    Toast.makeText(this, R.string.qr_failed, Toast.LENGTH_LONG).show()
+                }
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.qr_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
     // ---- Sayfada bul -----------------------------------------------------
 
     private fun setupFindBar() {
@@ -1602,6 +1786,11 @@ class BrowserActivity : Activity() {
     /** Dışarıdan gelen link / paylaşım / arama: yeni sekmede açılır. */
     private fun handleIntent(intent: Intent?): Boolean {
         intent ?: return false
+        if (intent.getBooleanExtra(Updater.EXTRA_SHOW_UPDATE, false)) {
+            intent.removeExtra(Updater.EXTRA_SHOW_UPDATE)
+            Updater.showPending(this)
+            return false
+        }
         val target = when (intent.action) {
             Intent.ACTION_VIEW -> intent.dataString
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { extractUrl(it) }
@@ -1681,6 +1870,9 @@ class BrowserActivity : Activity() {
             tabs.forEach { updateYoutubeScript(it) }
             updateShield()
         }
+        Updater.foreground = true
+        val pull = Settings.pullRefresh(this)
+        tabs.forEach { it.webView.pullEnabled = pull }
         val zoom = Settings.textZoom(this)
         if (zoom != appliedTextZoom) applyTextZoom(zoom)
         val dark = Settings.darkPages(this)
@@ -1690,6 +1882,7 @@ class BrowserActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        Updater.foreground = false
         ytDownloader.stopWatching()
         saveTabs()
         prefs().edit().putLong(PREF_TOTAL_BLOCKED, totalBlocked.get()).apply()

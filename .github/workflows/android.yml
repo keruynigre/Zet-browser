@@ -75,6 +75,8 @@ jobs:
           tag_name: android-${{ github.run_number }}
           name: Zet Android ${{ github.run_number }}
           body: |
+            ${{ github.event.head_commit.message }}
+
             Commit: ${{ github.sha }}
             Telefona kurmak için aşağıdaki `zet-browser.apk` dosyasını indir.
           files: zet-browser.apk

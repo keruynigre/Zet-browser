@@ -45,6 +45,14 @@ Kotlin dosyaları (`android/app/src/main/kotlin/dev/zet/browser/`):
 - `PageScripts.kt` — enjekte edilen JS: okuma modu, koyu sayfa, sınıf/kimlik toplama
   (genel kozmetik kurallar için `ZetCore.cosmeticGeneric`), masaüstü UA
 - `Suggestions.kt` — adres çubuğu önerileri (geçmiş/yer işareti + Google/DDG öneri servisi)
+- `Updater.kt` — GitHub Releases'tan güncelleme: `releases/latest` tag'i `android-N`,
+  N = versionCode (= CI run_number). 6 saatte bir denetler, diyalog + bildirim gösterir,
+  APK'yı indirip PackageInstaller oturumuyla kurar (`Updater$InstallReceiver`).
+  Release notu = commit mesajı (workflow body) → uyarıda "neler yeni" olarak görünür.
+  **Bu yüzden commit mesajlarını kullanıcıya dönük, Türkçe ve anlaşılır yaz.**
+- `PasswordStore.kt` — şifreler; Android Keystore AES-GCM ile şifreli tek blok
+  (prefs "zet_pw"). Yakalama/doldurma JS'i `PageScripts.PW_CAPTURE` / `pwFill`;
+  kaydetme sorusu sonraki sayfa geçişinde sorulur. Liste ayarlarda, cihaz kilidiyle.
 - `assets/newtab.html` — NTP şablonu ({{BLOCKED}} {{SAVED}} {{TILES}} {{MODE}})
 - İkonlar: `res/drawable/ic_*.xml` (Material Icons yolları)
 
@@ -102,7 +110,15 @@ cd android && echo "sdk.dir=/opt/android-sdk" > local.properties && gradle --no-
 - **Arayüz**: Kullanıcı Brave mobil arayüzünü örnek istedi (marka/logo
   kopyalanmadan). Brave'e özel Cüzdan / Leo / sekme grupları eklenmedi.
 
-## android-16 ile eklenenler (telefonda henüz denenmedi)
+## android-18 ile eklenenler (telefonda henüz denenmedi)
+
+GitHub'dan uygulama içi güncelleme + uyarı, şifre yöneticisi, aşağı çekip yenileme
+(ZetWebView `onOverScrolled` + dokunma takibi), HTTPS-önce (başarısızsa http'ye
+düşer, siteyi oturum boyunca muaf tutar; https→http yönlendirme döngüsü korumalı),
+QR tarama (`play-services-code-scanner`, Google Play Hizmetleri gerekir).
+Not: android-17 kurulu telefona android-18 bir kez elle kurulmalı; sonrası otomatik uyarır.
+
+## android-17 ile eklenenler (telefonda henüz denenmedi)
 
 Dosya yükleme (`onShowFileChooser`), site izinleri (kamera/mikrofon/konum; oturum
 boyunca hatırlanır, DRM otomatik), sayfada bul, masaüstü sitesi (sekme başına),
@@ -121,8 +137,8 @@ YouTube reklam engelleme, arka planda indirme, Tor.
 
 ## Yapılacaklar
 
-1. android-16 özelliklerinin geri bildirimine göre düzeltmeler. Kalan fikirler:
-   aşağı çekip yenileme, QR okuyucu, şifre yöneticisi, HTTPS-önce modu, scriptlet enjeksiyonu.
+1. android-17/18 özelliklerinin geri bildirimine göre düzeltmeler. Kalan fikir:
+   scriptlet enjeksiyonu (`Cosmetic.script` şu an kullanılmıyor).
 2. **Windows sürümü** (wry/tao + WebView2; zet-core ve zet-tor ortak;
    reklam engelleme için WebView2 `AddWebResourceRequestedFilter`;
    GitHub Actions `windows-latest` ile .exe). Henüz başlanmadı.

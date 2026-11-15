@@ -52,4 +52,6 @@ android {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
+    // QR tarama: Google Play Hizmetleri tarayıcısı (kamera izni gerekmez)
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

@@ -2,6 +2,10 @@ package dev.zet.browser
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.KeyguardManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -67,6 +71,7 @@ class SettingsActivity : Activity() {
 
         section(content, R.string.settings_display)
         toggle(content, R.string.dark_pages, R.string.dark_pages_desc, Settings.DARK_PAGES, false)
+        toggle(content, R.string.pull_refresh, R.string.pull_refresh_desc, Settings.PULL_REFRESH, true)
         val zoomRow = row(
             content, getString(R.string.text_size),
             getString(R.string.text_size_desc, Settings.textZoom(this)),
@@ -85,6 +90,10 @@ class SettingsActivity : Activity() {
         section(content, R.string.settings_privacy)
         toggle(content, R.string.shields, R.string.shields_desc, Settings.ADBLOCK, true)
         toggle(content, R.string.cookie_banners, R.string.cookie_banners_desc, Settings.COOKIE_BANNERS, true)
+        toggle(content, R.string.https_first, R.string.https_first_desc, Settings.HTTPS_FIRST, true)
+        toggle(content, R.string.save_passwords, R.string.save_passwords_desc, Settings.SAVE_PASSWORDS, true)
+        pwRow = row(content, getString(R.string.passwords), "") { openPasswords() }
+        updatePwRow()
         toggle(content, R.string.save_history, R.string.save_history_desc, Settings.SAVE_HISTORY, true)
         row(content, getString(R.string.clear_history), getString(R.string.clear_history_desc)) {
             confirm(R.string.clear_history_confirm) {
@@ -107,13 +116,90 @@ class SettingsActivity : Activity() {
 
         section(content, R.string.settings_about)
         val version = packageManager.getPackageInfo(packageName, 0).versionName
-        row(content, "Zet", getString(R.string.about_desc, version)) {}
+        row(content, "Zet", getString(R.string.about_desc, version) + " · android-" + Updater.currentCode(this)) {}
+        row(content, getString(R.string.check_updates), "github.com/keruynigre/Zet-browser") {
+            Updater.check(this, manual = true)
+        }
+        toggle(content, R.string.auto_update, R.string.auto_update_desc, Updater.PREF_AUTO, true)
 
         setContentView(ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.bar_bg))
             addView(content)
         })
         window.statusBarColor = getColor(R.color.bar_bg)
+    }
+
+    private lateinit var pwRow: LinearLayout
+
+    private fun updatePwRow() {
+        (pwRow.getChildAt(1) as TextView).text = getString(R.string.passwords_desc, PasswordStore.get(this).all().size)
+    }
+
+    /** Şifreleri göstermeden önce cihaz kilidi (PIN/parmak izi) sorulur. */
+    private fun openPasswords() {
+        val km = getSystemService(KeyguardManager::class.java)
+        if (km != null && km.isDeviceSecure) {
+            @Suppress("DEPRECATION")
+            val intent = km.createConfirmDeviceCredentialIntent(getString(R.string.passwords), null)
+            if (intent != null) {
+                @Suppress("DEPRECATION")
+                startActivityForResult(intent, REQ_UNLOCK)
+                return
+            }
+        }
+        showPasswords()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_UNLOCK && resultCode == RESULT_OK) showPasswords()
+    }
+
+    private fun showPasswords() {
+        val store = PasswordStore.get(this)
+        val list = store.all()
+        if (list.isEmpty()) {
+            Toast.makeText(this, R.string.no_passwords, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = list.map {
+            val host = android.net.Uri.parse(it.origin).host ?: it.origin
+            "$host\n${it.user.ifEmpty { getString(R.string.no_username) }}"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.passwords)
+            .setItems(labels) { _, which -> showPassword(list[which]) }
+            .show()
+    }
+
+    private fun showPassword(c: PasswordStore.Cred) {
+        val host = android.net.Uri.parse(c.origin).host ?: c.origin
+        val base = c.user.ifEmpty { getString(R.string.no_username) }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(host)
+            .setMessage("$base\n" + "•".repeat(10))
+            .setPositiveButton(R.string.pw_copy) { _, _ ->
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("password", c.pass))
+                Toast.makeText(this, R.string.pw_copied, Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton(R.string.pw_show, null)
+            .setNegativeButton(R.string.delete) { _, _ ->
+                confirm(R.string.delete) {
+                    PasswordStore.get(this).remove(c)
+                    updatePwRow()
+                }
+            }
+            .create()
+        dialog.setOnShowListener {
+            // "Göster" diyaloğu kapatmadan şifreyi açar.
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                dialog.setMessage("$base\n${c.pass}")
+            }
+        }
+        dialog.show()
     }
 
     private fun section(parent: LinearLayout, title: Int) {
@@ -183,5 +269,9 @@ class SettingsActivity : Activity() {
             .setPositiveButton(R.string.ok) { _, _ -> action() }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    companion object {
+        private const val REQ_UNLOCK = 3
     }
 }

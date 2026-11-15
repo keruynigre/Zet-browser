@@ -22,6 +22,9 @@ object Settings {
     const val DARK_PAGES = "dark_pages"
     const val SUGGESTIONS = "search_suggestions"
     const val COOKIE_BANNERS = "cookie_banners"
+    const val SAVE_PASSWORDS = "save_passwords"
+    const val PULL_REFRESH = "pull_refresh"
+    const val HTTPS_FIRST = "https_first"
 
     fun prefs(c: Context) = c.getSharedPreferences("zet", Context.MODE_PRIVATE)
 
@@ -36,4 +39,7 @@ object Settings {
     fun darkPages(c: Context) = prefs(c).getBoolean(DARK_PAGES, false)
     fun suggestions(c: Context) = prefs(c).getBoolean(SUGGESTIONS, true)
     fun cookieBanners(c: Context) = prefs(c).getBoolean(COOKIE_BANNERS, true)
+    fun savePasswords(c: Context) = prefs(c).getBoolean(SAVE_PASSWORDS, true)
+    fun pullRefresh(c: Context) = prefs(c).getBoolean(PULL_REFRESH, true)
+    fun httpsFirst(c: Context) = prefs(c).getBoolean(HTTPS_FIRST, true)
 }
