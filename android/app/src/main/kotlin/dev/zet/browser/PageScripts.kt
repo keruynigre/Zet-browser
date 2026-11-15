@@ -133,6 +133,57 @@ object PageScripts {
       var us=zpair(pw);if(us&&!us.value&&u)set(us,u);set(pw,p);return 1;
     })(${org.json.JSONObject.quote(user)},${org.json.JSONObject.quote(pass)})"""
 
+    /**
+     * YouTube iyileştirmeleri:
+     * - Varsayılan kalite: her yeni videoda bir kez [quality] (veya altındaki en iyi) seçilir;
+     *   kullanıcı sonra elle değiştirirse dokunulmaz. "auto" = YouTube'a bırak.
+     * - Video üzerinde yukarı kaydırma = tam ekran, tam ekranda aşağı kaydırma = çıkış.
+     */
+    fun ytEnhance(quality: String): String = """(function(Q){if(window.__zetYtEnh)return;window.__zetYtEnh=1;
+      var ORDER=['tiny','small','medium','large','hd720','hd1080','hd1440','hd2160','highres'];
+      var H={large:480,hd720:720,hd1080:1080,highres:4320};
+      if(Q!=='auto'){try{var now=Date.now(),h=H[Q]||1080;
+        localStorage.setItem('yt-player-quality',JSON.stringify({data:JSON.stringify({quality:h,previousQuality:h}),
+          expiration:now+31536000000,creation:now}));}catch(e){}}
+      var doneFor='';
+      function applyQuality(){if(Q==='auto')return;var p=document.getElementById('movie_player');
+        if(!p||!p.getAvailableQualityLevels)return;
+        if(p.classList&&p.classList.contains('ad-showing'))return;
+        var id='';try{id=(p.getVideoData&&p.getVideoData().video_id)||'';}catch(e){}
+        if(!id||id===doneFor)return;
+        var lv=p.getAvailableQualityLevels()||[];lv=lv.filter(function(x){return x!=='auto';});
+        if(!lv.length)return;
+        var max=Q==='highres'?99:ORDER.indexOf(Q),best=null,bi=-1;
+        for(var i=0;i<lv.length;i++){var k=ORDER.indexOf(lv[i]);if(k>bi&&k<=max){bi=k;best=lv[i];}}
+        if(!best)best=lv[lv.length-1];
+        try{if(p.setPlaybackQualityRange)p.setPlaybackQualityRange(best,best);
+          if(p.setPlaybackQuality)p.setPlaybackQuality(best);}catch(e){}
+        doneFor=id;}
+      setInterval(applyQuality,1000);
+
+      var sx=0,sy=0,st=0,inPlayer=false;
+      function inPl(t){return !!(t&&t.closest&&t.closest('#player-container-id,#player,.player-container,ytm-player,#movie_player,.html5-video-player,video'));}
+      document.addEventListener('touchstart',function(e){if(e.touches.length!==1){inPlayer=false;return;}
+        var t=e.touches[0];sx=t.clientX;sy=t.clientY;st=Date.now();inPlayer=inPl(e.target);},{passive:true,capture:true});
+      document.addEventListener('touchend',function(e){if(!inPlayer)return;inPlayer=false;
+        var t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+        if(Math.abs(dy)<60||Math.abs(dx)>Math.abs(dy)*0.6||Date.now()-st>800)return;
+        var fs=!!document.fullscreenElement;
+        if(dy<0&&!fs)enter();else if(dy>0&&fs&&document.exitFullscreen)document.exitFullscreen().catch(function(){});
+      },{passive:true,capture:true});
+      function enter(){var b=document.querySelector('.fullscreen-icon,button.ytp-fullscreen-button,'+
+          '[aria-label*="Tam ekran"],[aria-label*="tam ekran"],[aria-label*="Full screen"],[aria-label*="Fullscreen"]');
+        if(b){(b.closest('button')||b).click();setTimeout(function(){if(!document.fullscreenElement)direct();},350);}
+        else direct();}
+      function direct(){var c=document.getElementById('player-container-id')||document.querySelector('.html5-video-player')||
+          document.querySelector('video');if(c&&c.requestFullscreen)c.requestFullscreen().catch(function(){});}
+    })(${org.json.JSONObject.quote(quality)});"""
+
+    /** Tam ekrandaki videonun yatay olup olmadığı: "1" / "0". */
+    const val VIDEO_IS_WIDE = """(function(){var v=document.fullscreenElement&&document.fullscreenElement.querySelector?
+      document.fullscreenElement.querySelector('video'):null;if(!v)v=document.querySelector('video');
+      return v&&v.videoWidth>v.videoHeight?'1':'0';})()"""
+
     /** Masaüstü tarayıcı kimliği; Chrome sürümü mobil kimlikten alınır. */
     fun desktopUserAgent(mobileUa: String): String {
         val chrome = Regex("Chrome/([\\d.]+)").find(mobileUa)?.groupValues?.get(1) ?: "130.0.0.0"

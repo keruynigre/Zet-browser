@@ -113,6 +113,22 @@ class SettingsActivity : Activity() {
 
         section(content, R.string.settings_media)
         toggle(content, R.string.background_play, R.string.background_play_desc, Settings.BACKGROUND_PLAY, true)
+        val qLabel = { id: String -> Settings.YT_QUALITIES.firstOrNull { it.first == id }?.second ?: id }
+        val qRow = row(content, getString(R.string.yt_quality), qLabel(Settings.ytQuality(this))) {}
+        qRow.setOnClickListener {
+            val ids = Settings.YT_QUALITIES.map { it.first }
+            AlertDialog.Builder(this)
+                .setTitle(R.string.yt_quality)
+                .setSingleChoiceItems(
+                    Settings.YT_QUALITIES.map { it.second }.toTypedArray(),
+                    ids.indexOf(Settings.ytQuality(this)),
+                ) { d, which ->
+                    prefs.edit().putString(Settings.YT_QUALITY, ids[which]).apply()
+                    (qRow.getChildAt(1) as TextView).text = qLabel(ids[which])
+                    d.dismiss()
+                }
+                .show()
+        }
 
         section(content, R.string.settings_about)
         val version = packageManager.getPackageInfo(packageName, 0).versionName

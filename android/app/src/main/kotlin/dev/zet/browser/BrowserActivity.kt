@@ -94,6 +94,7 @@ class BrowserActivity : Activity() {
         var loading = false
         var adblockScript: ScriptHandler? = null
         var backgroundScript: ScriptHandler? = null
+        var enhanceScript: ScriptHandler? = null
         var torScript: ScriptHandler? = null
         var desktop = false
         var mobileUa = ""
@@ -151,6 +152,7 @@ class BrowserActivity : Activity() {
     private lateinit var pullIndicator: TextView
     private val passwords by lazy { PasswordStore.get(this) }
     private val httpsExempt = HashSet<String>()
+    private var appliedYtQuality = "hd1080"
     private var appliedTextZoom = 100
     private var appliedDarkPages = false
 
@@ -203,6 +205,7 @@ class BrowserActivity : Activity() {
         CookieManager.getInstance().setAcceptCookie(true)
         deleteOldIncognitoProfiles()
         appliedTextZoom = Settings.textZoom(this)
+        appliedYtQuality = Settings.ytQuality(this)
         appliedDarkPages = Settings.darkPages(this)
         setupToolbar()
         setupFindBar()
@@ -619,8 +622,18 @@ class BrowserActivity : Activity() {
             )
         }
         updateYoutubeScript(tab, wv)
+        updateEnhanceScript(tab, wv)
         updateTorScript(tab, wv)
         return wv
+    }
+
+    /** YouTube kalite / kaydırarak tam ekran betiği (kalite ayarı değişince yenilenir). */
+    private fun updateEnhanceScript(tab: Tab, wv: WebView = tab.webView) {
+        if (!docStartSupported) return
+        tab.enhanceScript?.remove()
+        tab.enhanceScript = WebViewCompat.addDocumentStartJavaScript(
+            wv, PageScripts.ytEnhance(appliedYtQuality), YT_ORIGINS,
+        )
     }
 
     /** YouTube reklam betiğini reklam engelleme ayarına göre ekler/kaldırır. */
@@ -1027,6 +1040,7 @@ class BrowserActivity : Activity() {
             if (!docStartSupported && isYoutube(url)) {
                 if (adblockEnabled) view.evaluateJavascript(ZetCore.ytAdblockScript(), null)
                 view.evaluateJavascript(ZetCore.ytBackgroundScript(), null)
+                view.evaluateJavascript(PageScripts.ytEnhance(appliedYtQuality), null)
             }
             if (mediaTab === tab && !isYoutube(url)) {
                 tab.webView.keepPlaying = false
@@ -1142,6 +1156,12 @@ class BrowserActivity : Activity() {
             fullscreenLayer.visibility = View.VISIBLE
             browserLayout.visibility = View.GONE
             setFullscreenMode(true)
+            // Yatay video: telefonu yan çevirmeye gerek kalmadan yatay göster.
+            tab.webView.evaluateJavascript(PageScripts.VIDEO_IS_WIDE) { r ->
+                if (r == "\"1\"" && customView != null) {
+                    requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+            }
         }
 
         override fun onHideCustomView() {
@@ -1707,6 +1727,7 @@ class BrowserActivity : Activity() {
         fullscreenLayer.visibility = View.GONE
         browserLayout.visibility = View.VISIBLE
         customView = null
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         setFullscreenMode(false)
@@ -1876,6 +1897,11 @@ class BrowserActivity : Activity() {
         Updater.foreground = true
         val pull = Settings.pullRefresh(this)
         tabs.forEach { it.webView.pullEnabled = pull }
+        val q = Settings.ytQuality(this)
+        if (q != appliedYtQuality) {
+            appliedYtQuality = q
+            tabs.forEach { updateEnhanceScript(it) }
+        }
         val zoom = Settings.textZoom(this)
         if (zoom != appliedTextZoom) applyTextZoom(zoom)
         val dark = Settings.darkPages(this)

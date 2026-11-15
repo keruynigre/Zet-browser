@@ -25,6 +25,16 @@ object Settings {
     const val SAVE_PASSWORDS = "save_passwords"
     const val PULL_REFRESH = "pull_refresh"
     const val HTTPS_FIRST = "https_first"
+    const val YT_QUALITY = "yt_quality"
+
+    /** YouTube varsayılan kalite seçenekleri: (oynatıcı kodu, etiket). */
+    val YT_QUALITIES = listOf(
+        "auto" to "Otomatik (YouTube seçsin)",
+        "large" to "480p",
+        "hd720" to "720p",
+        "hd1080" to "1080p",
+        "highres" to "En yüksek",
+    )
 
     fun prefs(c: Context) = c.getSharedPreferences("zet", Context.MODE_PRIVATE)
 
@@ -42,4 +52,5 @@ object Settings {
     fun savePasswords(c: Context) = prefs(c).getBoolean(SAVE_PASSWORDS, true)
     fun pullRefresh(c: Context) = prefs(c).getBoolean(PULL_REFRESH, true)
     fun httpsFirst(c: Context) = prefs(c).getBoolean(HTTPS_FIRST, true)
+    fun ytQuality(c: Context) = prefs(c).getString(YT_QUALITY, "hd1080") ?: "hd1080"
 }
