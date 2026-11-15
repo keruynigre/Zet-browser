@@ -153,6 +153,7 @@ class BrowserActivity : Activity() {
     private val passwords by lazy { PasswordStore.get(this) }
     private val httpsExempt = HashSet<String>()
     private var appliedYtQuality = "hd1080"
+    private var coldStart = false
     private var appliedTextZoom = 100
     private var appliedDarkPages = false
 
@@ -237,9 +238,7 @@ class BrowserActivity : Activity() {
         if (!handleIntent(intent) && tabs.isEmpty()) {
             openTab(NTP_URL, incognito = false)
         }
-        if (intent?.getBooleanExtra(Updater.EXTRA_SHOW_UPDATE, false) != true) {
-            Updater.check(this, manual = false)
-        }
+        coldStart = true
     }
 
     // ---- Tor --------------------------------------------------------------
@@ -1735,13 +1734,43 @@ class BrowserActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun setFullscreenMode(on: Boolean) {
-        window.decorView.systemUiVisibility = if (on) {
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        // Video, gizlenen sistem çubuklarının ve kamera çentiğinin alanını da kaplasın
+        // (yoksa oralarda açık renkli şeritler kalıyor).
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = if (on) {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                } else {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+            }
+        }
+        if (on) {
+            window.statusBarColor = Color.BLACK
+            window.navigationBarColor = Color.BLACK
         } else {
-            View.SYSTEM_UI_FLAG_VISIBLE
+            current?.let { applyTabTheme(it) } // sekmenin (gizli/normal) çubuk renkleri
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(!on)
+            val c = window.insetsController ?: return
+            if (on) {
+                c.hide(android.view.WindowInsets.Type.systemBars())
+                c.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                c.show(android.view.WindowInsets.Type.systemBars())
+            }
+        } else {
+            window.decorView.systemUiVisibility = if (on) {
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            } else {
+                View.SYSTEM_UI_FLAG_VISIBLE
+            }
         }
     }
 
@@ -1895,6 +1924,8 @@ class BrowserActivity : Activity() {
             updateShield()
         }
         Updater.foreground = true
+        Updater.check(this, manual = false, force = coldStart)
+        coldStart = false
         val pull = Settings.pullRefresh(this)
         tabs.forEach { it.webView.pullEnabled = pull }
         val q = Settings.ytQuality(this)

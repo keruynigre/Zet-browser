@@ -35,7 +35,7 @@ object Updater {
     private const val PREF_SKIPPED = "update_skipped"
     const val PREF_AUTO = "update_auto"
     const val EXTRA_SHOW_UPDATE = "zet_show_update"
-    private val CHECK_INTERVAL = TimeUnit.HOURS.toMillis(6)
+    private val CHECK_INTERVAL = TimeUnit.HOURS.toMillis(1)
 
     data class Release(val code: Int, val tag: String, val notes: String, val apkUrl: String)
 
@@ -59,14 +59,15 @@ object Updater {
 
     /**
      * [manual] true: her durumda sonucu bildirir ("güncelsin" dahil).
-     * false: 6 saatte bir, atlanan sürümü göstermeden, sessizce denetler.
+     * false: uygulama açılışında ([force]) ve ön plana her gelişte saatte en fazla bir kez,
+     * atlanan sürümü göstermeden denetler.
      */
-    fun check(activity: Activity, manual: Boolean) {
+    fun check(activity: Activity, manual: Boolean, force: Boolean = false) {
         val prefs = Settings.prefs(activity)
         if (!manual) {
             if (!autoEnabled(activity)) return
             val last = prefs.getLong(PREF_LAST_CHECK, 0)
-            if (System.currentTimeMillis() - last < CHECK_INTERVAL) {
+            if (!force && System.currentTimeMillis() - last < CHECK_INTERVAL) {
                 // Yakında denetlendi; bilinen yeni sürüm varsa yine de hatırlat.
                 latest?.let { if (isNewer(activity, it) && !skipped(activity, it)) showDialog(activity, it) }
                 return
