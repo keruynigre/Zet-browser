@@ -18,6 +18,9 @@ object ZetCore {
     /** Sayfada gizlenecek öğeler için CSS (boş olabilir). */
     external fun cosmeticCss(pageUrl: String): String
 
+    /** Sayfadaki sınıf/kimliklere uyan genel gizleme CSS'i (çerez uyarıları vb.). */
+    external fun cosmeticGeneric(pageUrl: String, classes: Array<String>, ids: Array<String>): String
+
     external fun setEnabled(enabled: Boolean)
 
     /** Adres çubuğuna yazılanı URL'ye ya da arama adresine çevirir. */

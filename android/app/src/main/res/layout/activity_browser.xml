@@ -98,6 +98,74 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Sayfada bul çubuğu -->
+        <LinearLayout
+            android:id="@+id/findBar"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@color/bar_bg"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/findInput"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@drawable/url_field_bg"
+                android:hint="@string/find_hint"
+                android:imeOptions="actionSearch|flagNoExtractUi"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:paddingStart="14dp"
+                android:paddingEnd="8dp"
+                android:singleLine="true"
+                android:textColor="@color/text"
+                android:textColorHint="@color/text_dim"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/findCount"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:minWidth="48dp"
+                android:paddingStart="6dp"
+                android:paddingEnd="2dp"
+                android:textColor="@color/text_dim"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/findPrev"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/find_in_page"
+                android:scaleType="center"
+                android:src="@drawable/ic_up" />
+
+            <ImageView
+                android:id="@+id/findNext"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/find_in_page"
+                android:scaleType="center"
+                android:src="@drawable/ic_down" />
+
+            <ImageView
+                android:id="@+id/findClose"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/cancel"
+                android:scaleType="center"
+                android:src="@drawable/ic_close" />
+        </LinearLayout>
+
         <ProgressBar
             android:id="@+id/progress"
             style="@android:style/Widget.Material.ProgressBar.Horizontal"
@@ -159,10 +227,25 @@
         </LinearLayout>
 
         <FrameLayout
-            android:id="@+id/webContainer"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/webContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <!-- Adres çubuğu önerileri, sayfanın üstünde -->
+            <ListView
+                android:id="@+id/suggestList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/menu_bg"
+                android:divider="@null"
+                android:elevation="8dp"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <!-- Alt çubuk: ana sayfa, yer işaretleri, ara, sekmeler, menü -->
         <LinearLayout

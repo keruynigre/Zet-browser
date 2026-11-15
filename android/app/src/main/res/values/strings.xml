@@ -96,4 +96,32 @@
     <string name="search_tabs">Sekmelerinde ara</string>
     <string name="no_recent_tabs">Yakın zamanda kapatılan sekme yok</string>
     <string name="add_bookmark">Yer işareti</string>
+
+    <!-- Sayfa araçları -->
+    <string name="find_in_page">Sayfada bul</string>
+    <string name="find_hint">Sayfada ara</string>
+    <string name="desktop_site">Masaüstü sitesi</string>
+    <string name="dark_pages">Koyu sayfalar</string>
+    <string name="dark_pages_desc">Açık renkli siteleri koyu gösterir</string>
+    <string name="text_size">Metin boyutu</string>
+    <string name="text_size_desc">Sayfalardaki yazı boyutu: %d%%</string>
+    <string name="translate_page">Sayfayı çevir</string>
+    <string name="reader_mode">Okuma modu</string>
+    <string name="reader_failed">Bu sayfada okunacak makale bulunamadı</string>
+    <string name="add_to_home">Ana ekrana ekle</string>
+    <string name="home_unsupported">Başlatıcın kısayol eklemeyi desteklemiyor</string>
+    <string name="print_page">Yazdır / PDF kaydet</string>
+    <string name="page_tools">Sayfa</string>
+    <string name="no_file_picker">Dosya seçici açılamadı</string>
+    <string name="perm_camera">kamerayı</string>
+    <string name="perm_mic">mikrofonu</string>
+    <string name="perm_location">konumunu</string>
+    <string name="perm_ask">%1$s %2$s kullanmak istiyor.</string>
+    <string name="allow">İzin ver</string>
+    <string name="deny">Engelle</string>
+    <string name="search_suggestions">Arama önerileri</string>
+    <string name="search_suggestions_desc">Yazarken arama motorundan öneri al (gizli sekme ve Tor\'da kapalı)</string>
+    <string name="cookie_banners">Çerez uyarılarını gizle</string>
+    <string name="cookie_banners_desc">\"Çerezleri kabul et\" pencerelerini engeller (uygulama yeniden açılınca)</string>
+    <string name="settings_display">Görünüm</string>
 </resources>

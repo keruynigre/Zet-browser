@@ -18,6 +18,10 @@ object Settings {
     const val ENGINE = "search_engine"
     const val BACKGROUND_PLAY = "background_play"
     const val SAVE_HISTORY = "save_history"
+    const val TEXT_ZOOM = "text_zoom"
+    const val DARK_PAGES = "dark_pages"
+    const val SUGGESTIONS = "search_suggestions"
+    const val COOKIE_BANNERS = "cookie_banners"
 
     fun prefs(c: Context) = c.getSharedPreferences("zet", Context.MODE_PRIVATE)
 
@@ -28,4 +32,8 @@ object Settings {
 
     fun backgroundPlay(c: Context) = prefs(c).getBoolean(BACKGROUND_PLAY, true)
     fun saveHistory(c: Context) = prefs(c).getBoolean(SAVE_HISTORY, true)
+    fun textZoom(c: Context) = prefs(c).getInt(TEXT_ZOOM, 100)
+    fun darkPages(c: Context) = prefs(c).getBoolean(DARK_PAGES, false)
+    fun suggestions(c: Context) = prefs(c).getBoolean(SUGGESTIONS, true)
+    fun cookieBanners(c: Context) = prefs(c).getBoolean(COOKIE_BANNERS, true)
 }

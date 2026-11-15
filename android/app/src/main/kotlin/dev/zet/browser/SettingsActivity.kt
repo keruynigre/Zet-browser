@@ -63,8 +63,28 @@ class SettingsActivity : Activity() {
                 .show()
         }
 
+        toggle(content, R.string.search_suggestions, R.string.search_suggestions_desc, Settings.SUGGESTIONS, true)
+
+        section(content, R.string.settings_display)
+        toggle(content, R.string.dark_pages, R.string.dark_pages_desc, Settings.DARK_PAGES, false)
+        val zoomRow = row(
+            content, getString(R.string.text_size),
+            getString(R.string.text_size_desc, Settings.textZoom(this)),
+        ) {}
+        zoomRow.setOnClickListener {
+            val values = (50..200 step 10).toList()
+            AlertDialog.Builder(this)
+                .setTitle(R.string.text_size)
+                .setItems(values.map { "%$it" }.toTypedArray()) { _, which ->
+                    prefs.edit().putInt(Settings.TEXT_ZOOM, values[which]).apply()
+                    (zoomRow.getChildAt(1) as TextView).text = getString(R.string.text_size_desc, values[which])
+                }
+                .show()
+        }
+
         section(content, R.string.settings_privacy)
         toggle(content, R.string.shields, R.string.shields_desc, Settings.ADBLOCK, true)
+        toggle(content, R.string.cookie_banners, R.string.cookie_banners_desc, Settings.COOKIE_BANNERS, true)
         toggle(content, R.string.save_history, R.string.save_history_desc, Settings.SAVE_HISTORY, true)
         row(content, getString(R.string.clear_history), getString(R.string.clear_history_desc)) {
             confirm(R.string.clear_history_confirm) {

@@ -161,6 +161,28 @@ impl AdBlocker {
     }
 }
 
+impl AdBlocker {
+    /// Sayfadaki sınıf/kimlik adlarına uyan genel (siteden bağımsız) gizleme
+    /// kuralları. Çerez uyarıları ve reklam kutularının çoğu bu kurallarla gizlenir.
+    pub fn generic_css(&self, page_url: &str, classes: &[String], ids: &[String]) -> String {
+        if !self.enabled {
+            return String::new();
+        }
+        let res = self.engine.url_cosmetic_resources(page_url);
+        if res.generichide {
+            return String::new();
+        }
+        let selectors = self
+            .engine
+            .hidden_class_id_selectors(classes, ids, &res.exceptions);
+        if selectors.is_empty() {
+            String::new()
+        } else {
+            format!("{}{{display:none!important}}", selectors.join(","))
+        }
+    }
+}
+
 /// Bir sayfa için kozmetik filtreleme çıktısı.
 #[derive(Debug, Default, Clone)]
 pub struct Cosmetic {
@@ -178,10 +200,27 @@ mod tests {
 @@||ads.example.com/allowed.js
 example.org##.reklam-kutusu
 example.org###sponsor
+##.cookie-uyarisi
+###cerez-banner
+~izinli.org##.cookie-uyarisi
 ";
 
     fn blocker() -> AdBlocker {
         AdBlocker::from_lists([LIST])
+    }
+
+    #[test]
+    fn generic_class_id_rules() {
+        let b = blocker();
+        let classes = vec!["cookie-uyarisi".to_string(), "icerik".to_string()];
+        let ids = vec!["cerez-banner".to_string()];
+        let css = b.generic_css("https://haber.site/", &classes, &ids);
+        assert!(css.contains(".cookie-uyarisi"), "{css}");
+        assert!(css.contains("#cerez-banner"), "{css}");
+        assert!(!css.contains("icerik"));
+        assert!(!b
+            .generic_css("https://izinli.org/", &classes, &[])
+            .contains(".cookie-uyarisi"));
     }
 
     #[test]

@@ -9,6 +9,23 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.drawable.Icon
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.text.Editable
+import android.text.TextWatcher
+import android.webkit.GeolocationPermissions
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.widget.BaseAdapter
+import android.widget.ImageView
+import android.widget.ListView
+import android.widget.SeekBar
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -72,6 +89,8 @@ class BrowserActivity : Activity() {
         var adblockScript: ScriptHandler? = null
         var backgroundScript: ScriptHandler? = null
         var torScript: ScriptHandler? = null
+        var desktop = false
+        var mobileUa = ""
 
         // En sonda: createWebView yukarıdaki alanlara yazar, önce onlar hazır olmalı.
         val webView: ZetWebView = createWebView(this)
@@ -101,6 +120,22 @@ class BrowserActivity : Activity() {
     private lateinit var fullscreenLayer: FrameLayout
     private lateinit var btnDownload: TextView
     private lateinit var ytDownloader: YouTubeDownloader
+
+    private lateinit var findBar: View
+    private lateinit var findInput: EditText
+    private lateinit var findCount: TextView
+    private lateinit var suggestList: ListView
+    private lateinit var suggestions: Suggestions
+    private var suggestItems: List<Suggestions.Item> = emptyList()
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private val permCallbacks = HashMap<Int, (Set<String>) -> Unit>()
+    private var nextPermRequest = 100
+
+    /** Bu oturumda sitelere verilen izin kararları (kaynak anahtarı -> izin). */
+    private val siteDecisions = HashMap<String, Boolean>()
+    private var appliedTextZoom = 100
+    private var appliedDarkPages = false
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -150,7 +185,11 @@ class BrowserActivity : Activity() {
         ZetCore.setEnabled(adblockEnabled)
         CookieManager.getInstance().setAcceptCookie(true)
         deleteOldIncognitoProfiles()
+        appliedTextZoom = Settings.textZoom(this)
+        appliedDarkPages = Settings.darkPages(this)
         setupToolbar()
+        setupFindBar()
+        setupSuggestions()
 
         PlaybackService.controller = { action ->
             runOnUiThread {
@@ -209,6 +248,7 @@ class BrowserActivity : Activity() {
             if (announce) Toast.makeText(this, getString(R.string.tor_starting, 0), Toast.LENGTH_SHORT).show()
         } else {
             torHandler.removeCallbacksAndMessages(null)
+        uiHandler.removeCallbacksAndMessages(null)
             btnTor.visibility = View.GONE
             ProxyController.getInstance().clearProxyOverride({ it.run() }) {
                 current?.webView?.reload()
@@ -294,6 +334,7 @@ class BrowserActivity : Activity() {
     private fun selectTab(tab: Tab) {
         if (current === tab) return
         exitFullscreen()
+        if (::findBar.isInitialized) closeFind()
         current?.let {
             captureThumb(it)
             webContainer.removeView(it.webView)
@@ -520,12 +561,20 @@ class BrowserActivity : Activity() {
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = false
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            textZoom = appliedTextZoom
+            setGeolocationEnabled(true)
             if (tab.incognito && !profilesSupported) cacheMode = WebSettings.LOAD_NO_CACHE
             // "; wv" işaretini kaldır: bazı siteler (Google girişi vb.)
             // gömülü WebView'ı engelliyor, normal Chrome gibi görünelim.
             userAgentString = userAgentString
                 .replace("; wv)", ")")
                 .replace(Regex("Version/\\d+\\.\\d+ "), "")
+        }
+        tab.mobileUa = wv.settings.userAgentString
+        wv.setFindListener { active, total, _ ->
+            if (tab === current && findBar.visibility == View.VISIBLE) {
+                findCount.text = if (total == 0) "0/0" else "${active + 1}/$total"
+            }
         }
         wv.webViewClient = ZetWebViewClient(tab)
         wv.webChromeClient = ZetChromeClient(tab)
@@ -673,7 +722,10 @@ class BrowserActivity : Activity() {
             }
         }
         urlBar.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) showUrl(current?.url)
+            if (!hasFocus) {
+                showUrl(current?.url)
+                if (::suggestions.isInitialized) hideSuggestions()
+            }
         }
     }
 
@@ -698,6 +750,23 @@ class BrowserActivity : Activity() {
                     startActivityForResult(LibraryActivity.intent(this, LibraryActivity.MODE_BOOKMARKS), REQ_LIBRARY)
                 },
                 BrowserMenu.Item(R.drawable.ic_recent_tabs, R.string.recent_tabs) { showRecentTabs() },
+                null,
+                BrowserMenu.Item(R.drawable.ic_find, R.string.find_in_page) { openFind() },
+                BrowserMenu.Item(R.drawable.ic_reader, R.string.reader_mode) { toggleReader(tab) },
+                BrowserMenu.Item(R.drawable.ic_translate, R.string.translate_page) {
+                    pageUrl?.let { translate(tab, it) }
+                },
+                BrowserMenu.Item(R.drawable.ic_desktop, R.string.desktop_site, toggle = tab.desktop) {
+                    toggleDesktop(tab)
+                },
+                BrowserMenu.Item(R.drawable.ic_dark, R.string.dark_pages, toggle = appliedDarkPages) {
+                    setDarkPages(!appliedDarkPages)
+                },
+                BrowserMenu.Item(R.drawable.ic_text_size, R.string.text_size) { showTextSize() },
+                BrowserMenu.Item(R.drawable.ic_phone, R.string.add_to_home) {
+                    pageUrl?.let { addToHome(tab, it) }
+                },
+                BrowserMenu.Item(R.drawable.ic_print, R.string.print_page) { printPage(tab) },
                 null,
                 BrowserMenu.Item(R.drawable.ic_settings, R.string.settings) {
                     startActivity(Intent(this, SettingsActivity::class.java))
@@ -936,6 +1005,7 @@ class BrowserActivity : Activity() {
 
         override fun onPageCommitVisible(view: WebView, url: String?) {
             injectCosmetics(view, url)
+            applyPageExtras(tab, url)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
@@ -947,6 +1017,10 @@ class BrowserActivity : Activity() {
                 thread { runCatching { db.addVisit(url, title) } }
             }
             injectCosmetics(view, url)
+            applyPageExtras(tab, url)
+            injectGenericCosmetics(tab, url)
+            // Sonradan beliren çerez uyarıları için bir tur daha.
+            uiHandler.postDelayed({ injectGenericCosmetics(tab, url) }, 2500)
             if (tab !== current) return
             progress.visibility = View.GONE
             showUrl(url)
@@ -1017,6 +1091,426 @@ class BrowserActivity : Activity() {
 
         override fun onHideCustomView() {
             exitFullscreen()
+        }
+
+        override fun onShowFileChooser(
+            webView: WebView,
+            filePathCallback: ValueCallback<Array<Uri>>,
+            params: FileChooserParams,
+        ): Boolean {
+            fileCallback?.onReceiveValue(null)
+            fileCallback = filePathCallback
+            val intent = params.createIntent().apply {
+                if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+            }
+            return try {
+                @Suppress("DEPRECATION")
+                startActivityForResult(intent, REQ_FILE)
+                true
+            } catch (e: ActivityNotFoundException) {
+                fileCallback = null
+                Toast.makeText(this@BrowserActivity, R.string.no_file_picker, Toast.LENGTH_SHORT).show()
+                false
+            }
+        }
+
+        override fun onPermissionRequest(request: PermissionRequest) {
+            runOnUiThread { handlePermissionRequest(request) }
+        }
+
+        override fun onGeolocationPermissionsShowPrompt(
+            origin: String,
+            callback: GeolocationPermissions.Callback,
+        ) {
+            askSite(origin, Uri.parse(origin).host ?: origin, getString(R.string.perm_location), "geo",
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            ) { granted -> callback.invoke(origin, granted.isNotEmpty(), false) }
+        }
+    }
+
+    // ---- Site izinleri ----------------------------------------------------
+
+    private fun handlePermissionRequest(request: PermissionRequest) {
+        val res = request.resources.toSet()
+        val autoGrant = res.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }
+        val wants = mutableListOf<String>()
+        val perms = mutableListOf<String>()
+        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in res) {
+            wants += getString(R.string.perm_camera)
+            perms += android.Manifest.permission.CAMERA
+        }
+        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in res) {
+            wants += getString(R.string.perm_mic)
+            perms += android.Manifest.permission.RECORD_AUDIO
+        }
+        if (wants.isEmpty()) {
+            if (autoGrant.isNotEmpty()) request.grant(autoGrant.toTypedArray()) else request.deny()
+            return
+        }
+        val origin = request.origin.toString()
+        askSite(origin, request.origin.host ?: origin, wants.joinToString(" ve "), perms.joinToString(","),
+            perms.toTypedArray(),
+        ) { granted ->
+            val ok = autoGrant.toMutableList()
+            if (android.Manifest.permission.CAMERA in granted &&
+                PermissionRequest.RESOURCE_VIDEO_CAPTURE in res
+            ) ok += PermissionRequest.RESOURCE_VIDEO_CAPTURE
+            if (android.Manifest.permission.RECORD_AUDIO in granted &&
+                PermissionRequest.RESOURCE_AUDIO_CAPTURE in res
+            ) ok += PermissionRequest.RESOURCE_AUDIO_CAPTURE
+            if (ok.isEmpty()) request.deny() else request.grant(ok.toTypedArray())
+        }
+    }
+
+    /**
+     * Siteye izin sorar (oturum boyunca hatırlanır), sonra gereken Android
+     * izinlerini ister. [onResult] verilen Android izinlerini alır (boş = red).
+     */
+    private fun askSite(
+        origin: String,
+        host: String,
+        what: String,
+        key: String,
+        perms: Array<String>,
+        onResult: (Set<String>) -> Unit,
+    ) {
+        val decisionKey = "$origin|$key"
+        val proceed = { allowed: Boolean ->
+            siteDecisions[decisionKey] = allowed
+            if (allowed) withAndroidPermissions(perms, onResult) else onResult(emptySet())
+        }
+        siteDecisions[decisionKey]?.let { proceed(it); return }
+        var answered = false
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.perm_ask, host, what))
+            .setPositiveButton(R.string.allow) { _, _ -> answered = true; proceed(true) }
+            .setNegativeButton(R.string.deny) { _, _ -> answered = true; proceed(false) }
+            .setOnDismissListener { if (!answered) onResult(emptySet()) }
+            .show()
+    }
+
+    private fun withAndroidPermissions(perms: Array<String>, onResult: (Set<String>) -> Unit) {
+        val missing = perms.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) {
+            onResult(perms.toSet())
+            return
+        }
+        val code = nextPermRequest++
+        permCallbacks[code] = onResult
+        requestPermissions(missing.toTypedArray(), code)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val cb = permCallbacks.remove(requestCode) ?: return
+        // İstenmeden önce zaten verilmiş olanlar da sayılır.
+        val granted = permissions.filterIndexed { i, _ ->
+            grantResults.getOrNull(i) == PackageManager.PERMISSION_GRANTED
+        }.toMutableSet()
+        cb(granted + permissions.filter { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED })
+    }
+
+    // ---- Sayfa araçları ---------------------------------------------------
+
+    private fun isWebPage(url: String?) = url != null && url.startsWith("http") && url != NTP_URL
+
+    /** Her sayfa yüklemesinde: koyu sayfa ve masaüstü görünümü. */
+    private fun applyPageExtras(tab: Tab, url: String?) {
+        if (!isWebPage(url)) return
+        val wv = tab.webView
+        if (appliedDarkPages) wv.evaluateJavascript(PageScripts.DARK_ON, null)
+        if (tab.desktop) {
+            wv.evaluateJavascript(
+                "(function(){var m=document.querySelector('meta[name=viewport]');" +
+                    "if(m)m.content='width=1100';})();",
+                null,
+            )
+        }
+    }
+
+    /** Genel gizleme kuralları: sayfadaki sınıf/kimliklere göre Rust motorundan alınır. */
+    private fun injectGenericCosmetics(tab: Tab, url: String?) {
+        if (!adblockEnabled || !isWebPage(url) || !tabs.contains(tab)) return
+        val wv = tab.webView
+        if (wv.url != url) return
+        wv.evaluateJavascript(PageScripts.COLLECT_CLASS_IDS) { res ->
+            val json = runCatching { JSONObject(JSONArray("[$res]").getString(0)) }.getOrNull()
+                ?: return@evaluateJavascript
+            val c = json.optJSONArray("c") ?: JSONArray()
+            val i = json.optJSONArray("i") ?: JSONArray()
+            val classes = Array(c.length()) { c.getString(it) }
+            val ids = Array(i.length()) { i.getString(it) }
+            thread(name = "zet-generic", isDaemon = true) {
+                val css = ZetCore.cosmeticGeneric(url!!, classes, ids)
+                if (css.isEmpty()) return@thread
+                runOnUiThread {
+                    if (tabs.contains(tab) && wv.url == url) {
+                        wv.evaluateJavascript(PageScripts.injectStyle("zet-generic", css), null)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setDarkPages(on: Boolean) {
+        appliedDarkPages = on
+        Settings.prefs(this).edit().putBoolean(Settings.DARK_PAGES, on).apply()
+        for (t in tabs) {
+            if (isWebPage(t.webView.url)) {
+                t.webView.evaluateJavascript(if (on) PageScripts.DARK_ON else PageScripts.DARK_OFF, null)
+            }
+        }
+    }
+
+    private fun applyTextZoom(zoom: Int) {
+        appliedTextZoom = zoom
+        tabs.forEach { it.webView.settings.textZoom = zoom }
+    }
+
+    private fun showTextSize() {
+        val label = TextView(this).apply {
+            textSize = 16f
+            setTextColor(getColor(R.color.text))
+            gravity = Gravity.CENTER
+        }
+        val update = { z: Int ->
+            label.text = getString(R.string.text_size_desc, z)
+            applyTextZoom(z)
+            Settings.prefs(this).edit().putInt(Settings.TEXT_ZOOM, z).apply()
+        }
+        val bar = SeekBar(this).apply {
+            max = 15 // %50 .. %200, 10'ar
+            progress = (appliedTextZoom - 50) / 10
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                    if (fromUser) update(50 + p * 10)
+                }
+                override fun onStartTrackingTouch(sb: SeekBar) = Unit
+                override fun onStopTrackingTouch(sb: SeekBar) = Unit
+            })
+        }
+        label.text = getString(R.string.text_size_desc, appliedTextZoom)
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+            addView(label)
+            addView(bar)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.text_size)
+            .setView(box)
+            .setPositiveButton(R.string.ok, null)
+            .setNeutralButton("%100") { _, _ -> update(100) }
+            .show()
+    }
+
+    private fun toggleDesktop(tab: Tab) {
+        tab.desktop = !tab.desktop
+        tab.webView.settings.userAgentString =
+            if (tab.desktop) PageScripts.desktopUserAgent(tab.mobileUa) else tab.mobileUa
+        tab.webView.reload()
+    }
+
+    private fun toggleReader(tab: Tab) {
+        if (!isWebPage(tab.webView.url)) return
+        tab.webView.evaluateJavascript(PageScripts.READER) { r ->
+            if (r?.contains("none") == true) {
+                Toast.makeText(this, R.string.reader_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun translate(tab: Tab, url: String) {
+        val enc = java.net.URLEncoder.encode(url, "UTF-8")
+        navigate(tab, "https://translate.google.com/translate?sl=auto&tl=tr&hl=tr&u=$enc")
+    }
+
+    private fun printPage(tab: Tab) {
+        val pm = getSystemService(PrintManager::class.java) ?: return
+        val name = tab.title.ifBlank { "Zet" }
+        pm.print(name, tab.webView.createPrintDocumentAdapter(name), PrintAttributes.Builder().build())
+    }
+
+    private fun addToHome(tab: Tab, url: String) {
+        val sm = getSystemService(ShortcutManager::class.java)
+        if (sm == null || !sm.isRequestPinShortcutSupported) {
+            Toast.makeText(this, R.string.home_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val label = tab.title.ifBlank { LibraryActivity.host(url) }.take(24)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url), this, BrowserActivity::class.java)
+        val info = ShortcutInfo.Builder(this, "site-${url.hashCode()}")
+            .setShortLabel(label)
+            .setIcon(Icon.createWithBitmap(shortcutIcon(tab.webView.favicon, url)))
+            .setIntent(intent)
+            .build()
+        sm.requestPinShortcut(info, null)
+    }
+
+    /** Kısayol ikonu: yeterince büyük favicon varsa o, yoksa harfli renkli daire. */
+    private fun shortcutIcon(favicon: Bitmap?, url: String): Bitmap {
+        val size = 192
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        if (favicon != null && favicon.width >= 32) {
+            paint.color = Color.WHITE
+            canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+            val inset = size / 5
+            canvas.drawBitmap(
+                favicon, null,
+                android.graphics.Rect(inset, inset, size - inset, size - inset),
+                Paint(Paint.FILTER_BITMAP_FLAG),
+            )
+        } else {
+            val colors = intArrayOf(0xFF2563EB.toInt(), 0xFF16A34A.toInt(), 0xFFDC2626.toInt(), 0xFF7C3AED.toInt())
+            paint.color = colors[Math.floorMod(url.hashCode(), colors.size)]
+            canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = size * 0.45f
+            paint.textAlign = Paint.Align.CENTER
+            paint.isFakeBoldText = true
+            val y = size / 2f - (paint.descent() + paint.ascent()) / 2
+            canvas.drawText(LibraryActivity.siteLetter(url), size / 2f, y, paint)
+        }
+        return out
+    }
+
+    // ---- Sayfada bul -----------------------------------------------------
+
+    private fun setupFindBar() {
+        findBar = findViewById(R.id.findBar)
+        findInput = findViewById(R.id.findInput)
+        findCount = findViewById(R.id.findCount)
+        findInput.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(e: Editable?) {
+                if (findBar.visibility != View.VISIBLE) return
+                val q = e?.toString().orEmpty()
+                if (q.isEmpty()) {
+                    current?.webView?.clearMatches()
+                    findCount.text = ""
+                } else {
+                    current?.webView?.findAllAsync(q)
+                }
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+        })
+        findInput.setOnEditorActionListener { _, _, _ ->
+            current?.webView?.findNext(true); true
+        }
+        findViewById<View>(R.id.findPrev).setOnClickListener { current?.webView?.findNext(false) }
+        findViewById<View>(R.id.findNext).setOnClickListener { current?.webView?.findNext(true) }
+        findViewById<View>(R.id.findClose).setOnClickListener { closeFind() }
+    }
+
+    private fun openFind() {
+        findBar.visibility = View.VISIBLE
+        findCount.text = ""
+        findInput.setText("")
+        findInput.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(findInput, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun closeFind() {
+        if (findBar.visibility != View.VISIBLE) return
+        findBar.visibility = View.GONE
+        current?.webView?.clearMatches()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(findInput.windowToken, 0)
+    }
+
+    // ---- Adres çubuğu önerileri ------------------------------------------
+
+    private fun setupSuggestions() {
+        suggestions = Suggestions(this, db)
+        suggestList = findViewById(R.id.suggestList)
+        val adapter = SuggestAdapter()
+        suggestList.adapter = adapter
+        suggestList.setOnItemClickListener { _, _, pos, _ ->
+            val item = suggestItems.getOrNull(pos) ?: return@setOnItemClickListener
+            hideSuggestions()
+            load(item.url ?: normalize(item.text))
+            hideKeyboard()
+        }
+        urlBar.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(e: Editable?) {
+                if (!urlBar.hasFocus()) return
+                val remote = Settings.suggestions(this@BrowserActivity) && !torEnabled &&
+                    current?.incognito != true
+                suggestions.query(e?.toString().orEmpty(), remote) { items ->
+                    if (!urlBar.hasFocus()) return@query
+                    suggestItems = items
+                    adapter.notifyDataSetChanged()
+                    suggestList.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+                }
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+        })
+    }
+
+    private fun hideSuggestions() {
+        suggestions.cancel()
+        suggestItems = emptyList()
+        suggestList.visibility = View.GONE
+    }
+
+    private inner class SuggestAdapter : BaseAdapter() {
+        override fun getCount() = suggestItems.size
+        override fun getItem(position: Int) = suggestItems[position]
+        override fun getItemId(position: Int) = position.toLong()
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val item = suggestItems[position]
+            val dp = resources.displayMetrics.density
+            val row = LinearLayout(this@BrowserActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = (52 * dp).toInt()
+                setPadding((16 * dp).toInt(), (6 * dp).toInt(), (16 * dp).toInt(), (6 * dp).toInt())
+            }
+            row.addView(ImageView(this@BrowserActivity).apply {
+                setImageResource(
+                    when (item.kind) {
+                        1 -> R.drawable.ic_history
+                        2 -> R.drawable.ic_star
+                        else -> R.drawable.ic_search
+                    },
+                )
+                alpha = 0.7f
+                layoutParams = LinearLayout.LayoutParams((22 * dp).toInt(), (22 * dp).toInt()).apply {
+                    marginEnd = (16 * dp).toInt()
+                }
+            })
+            val texts = LinearLayout(this@BrowserActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            texts.addView(TextView(this@BrowserActivity).apply {
+                text = item.text
+                textSize = 15f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(getColor(R.color.text))
+            })
+            if (item.url != null && item.url != item.text) {
+                texts.addView(TextView(this@BrowserActivity).apply {
+                    text = item.url
+                    textSize = 12f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(getColor(R.color.text_dim))
+                })
+            }
+            row.addView(texts)
+            return row
         }
     }
 
@@ -1133,6 +1627,7 @@ class BrowserActivity : Activity() {
         when {
             tabSwitcher.isShowing -> tabSwitcher.hide()
             customView != null -> exitFullscreen()
+            findBar.visibility == View.VISIBLE -> closeFind()
             urlBar.hasFocus() -> {
                 urlBar.clearFocus(); hideKeyboard()
             }
@@ -1155,6 +1650,18 @@ class BrowserActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_FILE) {
+            val cb = fileCallback
+            fileCallback = null
+            val uris = if (resultCode == RESULT_OK && data != null) {
+                data.clipData?.let { c -> Array(c.itemCount) { c.getItemAt(it).uri } }
+                    ?: data.data?.let { arrayOf(it) }
+            } else {
+                null
+            }
+            cb?.onReceiveValue(uris)
+            return
+        }
         if (requestCode != REQ_LIBRARY || resultCode != RESULT_OK) return
         val url = data?.getStringExtra(LibraryActivity.EXTRA_URL) ?: return
         if (data.getBooleanExtra(LibraryActivity.EXTRA_NEW_TAB, false)) {
@@ -1174,6 +1681,10 @@ class BrowserActivity : Activity() {
             tabs.forEach { updateYoutubeScript(it) }
             updateShield()
         }
+        val zoom = Settings.textZoom(this)
+        if (zoom != appliedTextZoom) applyTextZoom(zoom)
+        val dark = Settings.darkPages(this)
+        if (dark != appliedDarkPages) setDarkPages(dark)
         ytDownloader.startWatching()
     }
 
@@ -1199,6 +1710,7 @@ class BrowserActivity : Activity() {
         private const val NTP_URL = "https://zet.local/newtab"
         private const val PREF_TOTAL_BLOCKED = "total_blocked"
         private const val REQ_LIBRARY = 7
+        private const val REQ_FILE = 8
         private const val INCOGNITO_PREFIX = "zet-incognito-"
         private val YT_ORIGINS = setOf(
             "https://www.youtube.com", "https://m.youtube.com",

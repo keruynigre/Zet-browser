@@ -84,6 +84,14 @@ pub fn cosmetic_css(page_url: &str) -> String {
     guard.as_ref().map(|b| b.cosmetic(page_url).css).unwrap_or_default()
 }
 
+pub fn generic_css(page_url: &str, classes: &[String], ids: &[String]) -> String {
+    let guard = BLOCKER.read().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .map(|b| b.generic_css(page_url, classes, ids))
+        .unwrap_or_default()
+}
+
 pub fn set_enabled(enabled: bool) {
     let mut guard = BLOCKER.write().unwrap_or_else(|e| e.into_inner());
     if let Some(b) = guard.as_mut() {
@@ -141,6 +149,21 @@ pub extern "system" fn Java_dev_zet_browser_ZetCore_cosmeticCss(
 ) -> jstring {
     let page = read_string(&mut env, &page_url);
     let css = cosmetic_css(&page);
+    new_string(&mut env, &css)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_zet_browser_ZetCore_cosmeticGeneric(
+    mut env: JNIEnv,
+    _this: JObject,
+    page_url: JString,
+    classes: JObjectArray,
+    ids: JObjectArray,
+) -> jstring {
+    let page = read_string(&mut env, &page_url);
+    let classes = read_string_array(&mut env, &classes);
+    let ids = read_string_array(&mut env, &ids);
+    let css = generic_css(&page, &classes, &ids);
     new_string(&mut env, &css)
 }
 

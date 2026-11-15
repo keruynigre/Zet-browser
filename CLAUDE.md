@@ -40,7 +40,11 @@ Kotlin dosyaları (`android/app/src/main/kotlin/dev/zet/browser/`):
 - `ZetDb.kt` — SQLite geçmiş + yer işaretleri
 - `DownloadService.kt` (dataSync FGS), `PlaybackService.kt` (mediaPlayback FGS + MediaSession)
 - `YouTubeDownloader.kt`, `Muxer.kt` (MediaMuxer ile görüntü+ses birleştirme)
-- `FilterLists.kt` (EasyList/EasyPrivacy/Peter Lowe indir, `engine-v2.bin` önbelleği)
+- `FilterLists.kt` (EasyList/EasyPrivacy/Peter Lowe + Fanboy çerez listesi; önbellek
+  `engine-v3-c.bin` / `engine-v3.bin` — çerez ayarına göre)
+- `PageScripts.kt` — enjekte edilen JS: okuma modu, koyu sayfa, sınıf/kimlik toplama
+  (genel kozmetik kurallar için `ZetCore.cosmeticGeneric`), masaüstü UA
+- `Suggestions.kt` — adres çubuğu önerileri (geçmiş/yer işareti + Google/DDG öneri servisi)
 - `assets/newtab.html` — NTP şablonu ({{BLOCKED}} {{SAVED}} {{TILES}} {{MODE}})
 - İkonlar: `res/drawable/ic_*.xml` (Material Icons yolları)
 
@@ -98,18 +102,27 @@ cd android && echo "sdk.dir=/opt/android-sdk" > local.properties && gradle --no-
 - **Arayüz**: Kullanıcı Brave mobil arayüzünü örnek istedi (marka/logo
   kopyalanmadan). Brave'e özel Cüzdan / Leo / sekme grupları eklenmedi.
 
+## android-16 ile eklenenler (telefonda henüz denenmedi)
+
+Dosya yükleme (`onShowFileChooser`), site izinleri (kamera/mikrofon/konum; oturum
+boyunca hatırlanır, DRM otomatik), sayfada bul, masaüstü sitesi (sekme başına),
+koyu sayfalar (CSS ters çevirme; zaten koyu sitelere dokunmaz), metin boyutu,
+çeviri (translate.google.com proxy), okuma modu (katman), ana ekrana ekle
+(ShortcutManager), yazdır/PDF, arama önerileri (gizli sekme ve Tor'da ağ isteği yok),
+çerez uyarısı engelleme + genel kozmetik kurallar (generichide'a uyar).
+Not: Bu ortamda Maven 429 verebiliyor; gradle'ı birkaç kez dene, lint'i
+`-x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease` ile atla.
+
 ## Durum (android-15)
 
-Telefonda **doğrulananlar**: kurulum, temel tarama, reklam engelleme sayacı,
-YouTube **indirme** (VISIONOS ile, ses+video), sekmeler (eski arayüzle).
-
-Kullanıcı geri bildirimi **bekleniyor**: android-15 arayüzü (alt çubuk,
-⋮ menü, sekme ızgarası, geçmiş/yer işaretleri/ayarlar), ekran kapalıyken
-çalma, YouTube reklam engelleme, arka planda indirme, Tor.
+Telefonda **doğrulananlar** (kullanıcı "hepsi çalışıyor" dedi): kurulum, tarama,
+reklam engelleme, YouTube indirme, android-15 arayüzü, ekran kapalıyken çalma,
+YouTube reklam engelleme, arka planda indirme, Tor.
 
 ## Yapılacaklar
 
-1. Kullanıcının android-15 geri bildirimine göre düzeltmeler.
+1. android-16 özelliklerinin geri bildirimine göre düzeltmeler. Kalan fikirler:
+   aşağı çekip yenileme, QR okuyucu, şifre yöneticisi, HTTPS-önce modu, scriptlet enjeksiyonu.
 2. **Windows sürümü** (wry/tao + WebView2; zet-core ve zet-tor ortak;
    reklam engelleme için WebView2 `AddWebResourceRequestedFilter`;
    GitHub Actions `windows-latest` ile .exe). Henüz başlanmadı.
