@@ -46,7 +46,8 @@ Kotlin dosyaları (`android/app/src/main/kotlin/dev/zet/browser/`):
   (genel kozmetik kurallar için `ZetCore.cosmeticGeneric`), masaüstü UA
 - `Suggestions.kt` — adres çubuğu önerileri (geçmiş/yer işareti + Google/DDG öneri servisi)
 - `Updater.kt` — GitHub Releases'tan güncelleme: `releases/latest` tag'i `android-N`,
-  N = versionCode (= CI run_number). 6 saatte bir denetler, diyalog + bildirim gösterir,
+  N = versionCode (= CI run_number). Açılışta ve her onResume'da (saatte en fazla 1) denetler,
+  diyalog + bildirim gösterir,
   APK'yı indirip PackageInstaller oturumuyla kurar (`Updater$InstallReceiver`).
   Release notu = commit mesajı (workflow body) → uyarıda "neler yeni" olarak görünür.
   **Bu yüzden commit mesajlarını kullanıcıya dönük, Türkçe ve anlaşılır yaz.**
@@ -109,6 +110,19 @@ cd android && echo "sdk.dir=/opt/android-sdk" > local.properties && gradle --no-
   sekme kapanınca silinir.
 - **Arayüz**: Kullanıcı Brave mobil arayüzünü örnek istedi (marka/logo
   kopyalanmadan). Brave'e özel Cüzdan / Leo / sekme grupları eklenmedi.
+
+## android-19..22 (YouTube geri bildirimleri)
+
+- Kullanıcının "başlık görünmüyor" dediği şey aslında aşağı kaydırınca sabit oynatıcının
+  altındaki "Tümü / İlgili" çipleriydi (Brave'de var, bizde yok). android-22'de Zet artık
+  sadeleştirilmiş Chrome UA'sı ("Android 10; K") + Sec-CH-UA'da Chrome markaları
+  (`UserAgentMetadata`) + X-Requested-With kapalı kullanıyor; çipler gelmezse sebep başka.
+- YouTube'da genel kozmetik kurallar kapalı; dokunarak açılan video sesli başlar.
+- `PageScripts.ytEnhance`: varsayılan kalite (Ayarlar > Medya, varsayılan 1080p) +
+  oynatıcıda yukarı kaydırma = tam ekran. Tam ekranda yatay video → yatay yön.
+- Tam ekran: WindowInsetsController + cutout SHORT_EDGES + decorFits(false);
+  çıkışta WebView'a sıfır inset gönderiliyor (yoksa safe-area takılı kalıp sayfa sağa kayıyordu).
+- Telefonda doğrulandı: yukarı kaydırarak tam ekran çalışıyor.
 
 ## android-18 ile eklenenler (telefonda henüz denenmedi)
 

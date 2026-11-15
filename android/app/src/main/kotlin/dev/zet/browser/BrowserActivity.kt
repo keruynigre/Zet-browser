@@ -69,6 +69,8 @@ import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
+import androidx.webkit.UserAgentMetadata
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONArray
 import org.json.JSONObject
@@ -592,7 +594,16 @@ class BrowserActivity : Activity() {
                 .replace("; wv)", ")")
                 .replace(Regex("Version/\\d+\\.\\d+ "), "")
         }
+        // Chrome'un sadeleştirilmiş kimliği: siteler (YouTube) bizi gömülü WebView sanıp
+        // kısıtlı sayfa vermesin.
+        val major = Regex("Chrome/(\\d+)").find(wv.settings.userAgentString)?.groupValues?.get(1) ?: "130"
+        wv.settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/$major.0.0.0 Mobile Safari/537.36"
         tab.mobileUa = wv.settings.userAgentString
+        applyUaMetadata(wv, mobile = true)
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet())
+        }
         wv.addJavascriptInterface(PwBridge(tab), "ZetPw")
         wv.pullEnabled = Settings.pullRefresh(this)
         wv.onPull = { dy -> if (tab === current) showPull(dy, wv.pullThreshold) }
@@ -624,6 +635,31 @@ class BrowserActivity : Activity() {
         updateEnhanceScript(tab, wv)
         updateTorScript(tab, wv)
         return wv
+    }
+
+    /** İstemci ipuçları (Sec-CH-UA): "Android WebView" yerine Chrome markaları. */
+    private fun applyUaMetadata(wv: WebView, mobile: Boolean) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) return
+        runCatching {
+            val current = WebSettingsCompat.getUserAgentMetadata(wv.settings)
+            val chromium = current.brandVersionList.firstOrNull { it.brand == "Chromium" }
+            val major = chromium?.majorVersion ?: "130"
+            val full = chromium?.fullVersion ?: "$major.0.0.0"
+            fun brand(name: String, maj: String, fullV: String) =
+                UserAgentMetadata.BrandVersion.Builder().setBrand(name).setMajorVersion(maj).setFullVersion(fullV).build()
+            val meta = UserAgentMetadata.Builder(current)
+                .setBrandVersionList(
+                    listOf(
+                        brand("Chromium", major, full),
+                        brand("Google Chrome", major, full),
+                        brand("Not?A_Brand", "99", "99.0.0.0"),
+                    ),
+                )
+                .setMobile(mobile)
+                .setPlatform(if (mobile) "Android" else "Linux")
+                .build()
+            WebSettingsCompat.setUserAgentMetadata(wv.settings, meta)
+        }
     }
 
     /** YouTube kalite / kaydırarak tam ekran betiği (kalite ayarı değişince yenilenir). */
@@ -1390,6 +1426,7 @@ class BrowserActivity : Activity() {
         tab.desktop = !tab.desktop
         tab.webView.settings.userAgentString =
             if (tab.desktop) PageScripts.desktopUserAgent(tab.mobileUa) else tab.mobileUa
+        applyUaMetadata(tab.webView, mobile = !tab.desktop)
         tab.webView.reload()
     }
 
@@ -1730,6 +1767,15 @@ class BrowserActivity : Activity() {
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         setFullscreenMode(false)
+        // Yatay tam ekrandaki çentik boşluğu (safe-area) sayfada takılı kalmasın:
+        // dönüş tamamlanınca WebView'a sıfır kenar boşluğu bildir.
+        if (Build.VERSION.SDK_INT >= 30) {
+            for (delay in longArrayOf(50, 400, 1000)) {
+                uiHandler.postDelayed({
+                    current?.webView?.dispatchApplyWindowInsets(android.view.WindowInsets.Builder().build())
+                }, delay)
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
