@@ -97,6 +97,7 @@ class BrowserActivity : Activity() {
         var adblockScript: ScriptHandler? = null
         var backgroundScript: ScriptHandler? = null
         var enhanceScript: ScriptHandler? = null
+        var cosmeticScript: ScriptHandler? = null
         var torScript: ScriptHandler? = null
         var desktop = false
         var mobileUa = ""
@@ -634,7 +635,37 @@ class BrowserActivity : Activity() {
         updateYoutubeScript(tab, wv)
         updateEnhanceScript(tab, wv)
         updateTorScript(tab, wv)
+        wv.addJavascriptInterface(CosmeticBridge(), "ZetCosmetic")
+        if (docStartSupported) {
+            tab.cosmeticScript = WebViewCompat.addDocumentStartJavaScript(
+                wv, PageScripts.COSMETIC_DOCSTART, setOf("*"),
+            )
+        }
         return wv
+    }
+
+    /**
+     * Belge başı gizleme betiğinin sorduğu köprü (tüm çerçevelerden, arka plan
+     * thread'inde çağrılır). Yalnızca CSS döndürür.
+     */
+    private inner class CosmeticBridge {
+        @JavascriptInterface
+        fun css(url: String): String =
+            if (!adblockEnabled || !url.startsWith("http") || url.startsWith(NTP_URL)) "" else ZetCore.cosmeticCss(url)
+
+        @JavascriptInterface
+        fun generic(url: String, classesJson: String, idsJson: String): String {
+            if (!adblockEnabled || !url.startsWith("http") || isYoutube(url)) return ""
+            return runCatching {
+                val c = JSONArray(classesJson)
+                val i = JSONArray(idsJson)
+                ZetCore.cosmeticGeneric(
+                    url,
+                    Array(c.length()) { c.getString(it) },
+                    Array(i.length()) { i.getString(it) },
+                )
+            }.getOrDefault("")
+        }
     }
 
     /** İstemci ipuçları (Sec-CH-UA): "Android WebView" yerine Chrome markaları. */
@@ -1002,6 +1033,7 @@ class BrowserActivity : Activity() {
 
     /** Gizlenecek reklam öğeleri için <style> enjekte eder. */
     private fun injectCosmetics(view: WebView, url: String?) {
+        if (docStartSupported) return // belge başı betiği (COSMETIC_DOCSTART) hallediyor
         if (!adblockEnabled || url == null || !url.startsWith("http")) return
         val css = ZetCore.cosmeticCss(url)
         if (css.isEmpty()) return
@@ -1345,6 +1377,7 @@ class BrowserActivity : Activity() {
 
     /** Genel gizleme kuralları: sayfadaki sınıf/kimliklere göre Rust motorundan alınır. */
     private fun injectGenericCosmetics(tab: Tab, url: String?) {
+        if (docStartSupported) return
         if (!adblockEnabled || !isWebPage(url) || !tabs.contains(tab)) return
         // YouTube'un kendi reklam betiği var; genel kurallar sayfa öğelerini gizleyebiliyor.
         if (isYoutube(url)) return

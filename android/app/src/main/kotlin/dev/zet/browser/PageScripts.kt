@@ -184,6 +184,38 @@ object PageScripts {
       document.fullscreenElement.querySelector('video'):null;if(!v)v=document.querySelector('video');
       return v&&v.videoWidth>v.videoHeight?'1':'0';})()"""
 
+    /**
+     * Reklam gizleme, belge başında ve TÜM çerçevelerde (iframe dahil) çalışır:
+     * site özel CSS hemen uygulanır; sonradan eklenen öğelerin sınıf/kimlikleri
+     * MutationObserver ile toplanıp genel kurallar için ZetCosmetic köprüsüne sorulur.
+     */
+    const val COSMETIC_DOCSTART = """(function(){
+      if(window.__zetCos||!window.ZetCosmetic)return;window.__zetCos=1;
+      var url=location.href;if(!/^https?:/.test(url))return;
+      var st=document.createElement('style');st.id='zet-cos';
+      var base='',gen='';
+      function render(){st.textContent=base+gen;
+        if(!st.parentNode){var r=document.head||document.documentElement;if(r)r.appendChild(st);}}
+      try{base=ZetCosmetic.css(url)||'';}catch(e){}
+      if(base)render();
+      var sc={},si={},pc=[],pi=[],timer=0;
+      function col(e){if(!e||e.nodeType!==1)return;
+        if(e.id&&!si[e.id]){si[e.id]=1;pi.push(e.id);}
+        var cl=e.classList;if(cl)for(var j=0;j<cl.length;j++){var c=cl[j];if(!sc[c]){sc[c]=1;pc.push(c);}}}
+      function scan(n){if(!n||n.nodeType!==1)return;col(n);
+        var all=n.querySelectorAll('[class],[id]');for(var i=0;i<all.length;i++)col(all[i]);}
+      function flush(){timer=0;if(!pc.length&&!pi.length)return;var c=pc,i=pi;pc=[];pi=[];
+        try{var g=ZetCosmetic.generic(url,JSON.stringify(c),JSON.stringify(i));if(g){gen+=g;render();}}catch(e){}}
+      function sched(){if(!timer)timer=setTimeout(flush,150);}
+      new MutationObserver(function(ms){for(var k=0;k<ms.length;k++){var m=ms[k];
+          if(m.type==='attributes')col(m.target);
+          else for(var a=0;a<m.addedNodes.length;a++)scan(m.addedNodes[a]);}
+        if(pc.length||pi.length)sched();})
+        .observe(document.documentElement||document,{childList:true,subtree:true,attributes:true,attributeFilter:['class','id']});
+      function full(){scan(document.documentElement);if(base)render();sched();}
+      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',full);else full();
+    })();"""
+
     /** Masaüstü tarayıcı kimliği; Chrome sürümü mobil kimlikten alınır. */
     fun desktopUserAgent(mobileUa: String): String {
         val chrome = Regex("Chrome/([\\d.]+)").find(mobileUa)?.groupValues?.get(1) ?: "130.0.0.0"

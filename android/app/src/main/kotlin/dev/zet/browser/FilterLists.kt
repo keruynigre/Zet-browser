@@ -13,17 +13,22 @@ class FilterLists(context: Context) {
     private val cookies = Settings.cookieBanners(context)
 
     init {
-        File(dir, "engine-v2.bin").delete() // eski sürümün önbelleği
+        // eski sürümlerin önbellekleri
+        listOf("engine-v2.bin", "engine-v3.bin", "engine-v3-c.bin").forEach { File(dir, it).delete() }
     }
 
     // Liste kümesi değişince (çerez listesi aç/kapa) ayrı önbellek kullanılır.
-    private val cache = File(dir, if (cookies) "engine-v3-c.bin" else "engine-v3.bin")
+    private val cache = File(dir, if (cookies) "engine-v4-c.bin" else "engine-v4.bin")
 
     private val sources = listOfNotNull(
         "easylist.txt" to "https://easylist.to/easylist/easylist.txt",
         "easyprivacy.txt" to "https://easylist.to/easylist/easyprivacy.txt",
         "peter-lowe.txt" to
             "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
+        // uBlock Origin listeleri (Brave de kullanır): site özel kurallar + kırılma düzeltmeleri
+        "ubo-filters.txt" to "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+        "ubo-unbreak.txt" to "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+        "ubo-quick-fixes.txt" to "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
         if (cookies) "fanboy-cookie.txt" to "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt" else null,
     )
 

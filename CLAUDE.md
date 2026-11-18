@@ -40,8 +40,13 @@ Kotlin dosyaları (`android/app/src/main/kotlin/dev/zet/browser/`):
 - `ZetDb.kt` — SQLite geçmiş + yer işaretleri
 - `DownloadService.kt` (dataSync FGS), `PlaybackService.kt` (mediaPlayback FGS + MediaSession)
 - `YouTubeDownloader.kt`, `Muxer.kt` (MediaMuxer ile görüntü+ses birleştirme)
-- `FilterLists.kt` (EasyList/EasyPrivacy/Peter Lowe + Fanboy çerez listesi; önbellek
-  `engine-v3-c.bin` / `engine-v3.bin` — çerez ayarına göre)
+- `FilterLists.kt` (EasyList/EasyPrivacy/Peter Lowe + uBO filters/unbreak/quick-fixes +
+  Fanboy çerez listesi; önbellek `engine-v4-c.bin` / `engine-v4.bin` — çerez ayarına göre)
+- Kozmetik gizleme (android-23): `PageScripts.COSMETIC_DOCSTART` belge başında TÜM
+  çerçevelerde çalışır, `ZetCosmetic` JS köprüsünden site CSS'ini alır, MutationObserver
+  ile sonradan eklenen öğelerin sınıf/kimliklerini genel kurallara sorar. Eski
+  `injectCosmetics`/`injectGenericCosmetics` yalnızca belge başı desteklenmeyen WebView'da.
+  Scriptlet'ler hâlâ yok (kaynak dosyası yüklenmiyor).
 - `PageScripts.kt` — enjekte edilen JS: okuma modu, koyu sayfa, sınıf/kimlik toplama
   (genel kozmetik kurallar için `ZetCore.cosmeticGeneric`), masaüstü UA
 - `Suggestions.kt` — adres çubuğu önerileri (geçmiş/yer işareti + Google/DDG öneri servisi)
@@ -84,7 +89,8 @@ cd android && echo "sdk.dir=/opt/android-sdk" > local.properties && gradle --no-
 - Emülatör yok (KVM yok). Arayüz telefonda doğrulanır; HTML (NTP) Playwright ile
   ekran görüntüsü alınarak kontrol edilebilir.
 - Ortam: "Zet Browser" (izinli: www.youtube.com, youtubei.googleapis.com,
-  dl.google.com, easylist.to).
+  dl.google.com, easylist.to, novelfull.com, secure.fanboy.co.nz). novelfull Cloudflare
+  korumalı; bot korumasını aşmaya çalışma (izin verilmiyor).
 
 ## Önemli kararlar / öğrenilenler
 
