@@ -26,8 +26,10 @@ crates/zet-core     Platformdan bağımsız Rust: adblock (Brave adblock crate),
                     scripts/*.js (WebView'a enjekte edilen betikler)
 crates/zet-tor      Arti (Rust Tor) + kendi SOCKS5 sunucumuz (socks.rs)
 crates/zet-android  JNI köprüsü (cdylib libzet_android.so)
+crates/zet-desktop  Windows sürümü (tao + wry/WebView2) — bkz. "Windows sürümü"
 android/            Kotlin kabuk (androidx yok sayılır, yalnızca androidx.webkit)
-.github/workflows/android.yml   test + cargo-ndk + gradle + Release
+.github/workflows/android.yml   build (Android) + windows (windows-latest) → release işi
+                                ikisini aynı `android-N` sürümünde yayınlar
 ```
 
 Kotlin dosyaları (`android/app/src/main/kotlin/dev/zet/browser/`):
@@ -117,6 +119,28 @@ cd android && echo "sdk.dir=/opt/android-sdk" > local.properties && gradle --no-
 - **Arayüz**: Kullanıcı Brave mobil arayüzünü örnek istedi (marka/logo
   kopyalanmadan). Brave'e özel Cüzdan / Leo / sekme grupları eklenmedi.
 
+## Windows sürümü (android-24'ten itibaren, Windows'ta henüz denenmedi)
+
+- Kalıcı link: https://github.com/keruynigre/Zet-browser/releases/latest/download/zet-browser-windows.exe
+- `crates/zet-desktop`: `main.rs` yalnızca Windows'ta `app::run()`; Linux'ta (CI testleri)
+  sadece ortak modüller derlenir (tao/wry yalnızca `cfg(windows)` bağımlılığı).
+- `app.rs`: tek pencere; üstte `ui.html` (sekmeler + adres çubuğu, 84 px, ipc ile Rust'a
+  mesaj), altında sekme başına child WebView2. Yerleşik sayfalar `zet` protokolü →
+  WebView2'de `http://zet.newtab/`, `http://zet.settings/` (`newtab.html`, `settings.html`).
+- `win.rs`: WebView2 `WebResourceRequested` ("*" filtresi) ile ağ engelleme;
+  `NavigationStarting` ile ana sayfa adresi tutulur. `content.js` (belge başı, ana çerçeve):
+  adres takibi, kısayollar, kozmetik gizleme (ipc ile CSS ister).
+- Gizli sekme = WebView2 InPrivate. Tor sekmesi = ayrı WebContext (`tor-profile`) +
+  `--proxy-server=socks5://127.0.0.1:PORT` + WebRTC kapalı; Tor ilk Tor sekmesinde başlar.
+- `engine.rs` liste indirme/önbellek (Android ile aynı listeler), `settings.rs`
+  (%LOCALAPPDATA%\Zet: settings.json, session.json, profile/, filters/, tor/),
+  `updater.rs` (`zet-browser-windows.exe` asset'i; çalışan exe → .old, yenisi yerine, yeniden başlat).
+  Sürüm numarası derleme anında `ZET_BUILD` (CI run_number).
+- Yerel kontrol: `rustup target add x86_64-pc-windows-gnu` + `apt-get install mingw-w64`,
+  sonra `cargo clippy -p zet-desktop --target x86_64-pc-windows-gnu` (tam .exe de bağlanıyor).
+- Henüz yok: YouTube indirme (birleştirme için muxer gerek), geçmiş/yer işaretleri,
+  şifreler, sayfada bul (WebView2'nin kendi Ctrl+F'si var), varsayılan tarayıcı kaydı, ikon.
+
 ## android-19..22 (YouTube geri bildirimleri)
 
 - Kullanıcının "başlık görünmüyor" dediği şey aslında aşağı kaydırınca sabit oynatıcının
@@ -159,9 +183,8 @@ YouTube reklam engelleme, arka planda indirme, Tor.
 
 1. android-17/18 özelliklerinin geri bildirimine göre düzeltmeler. Kalan fikir:
    scriptlet enjeksiyonu (`Cosmetic.script` şu an kullanılmıyor).
-2. **Windows sürümü** (wry/tao + WebView2; zet-core ve zet-tor ortak;
-   reklam engelleme için WebView2 `AddWebResourceRequestedFilter`;
-   GitHub Actions `windows-latest` ile .exe). Henüz başlanmadı.
+2. **Windows sürümü**: ilk sürüm hazır (yukarıya bak); kullanıcı geri bildirimi bekleniyor.
+   Sonraki adımlar: YouTube indirme, geçmiş/yer işaretleri, uygulama ikonu.
 3. Fikirler: Tor için "yeni kimlik", YouTube indirmelerini Tor'dan geçirme
    seçeneği, NTP arka plan görseli.
 

@@ -1,4 +1,4 @@
-name: Android APK
+name: Android APK + Windows
 
 on:
   push:
@@ -68,16 +68,56 @@ jobs:
           name: zet-browser-apk
           path: zet-browser.apk
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust kurulumu
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+
+      - name: Windows sürümünü derle
+        env:
+          ZET_BUILD: ${{ github.run_number }}
+        run: cargo build --release -p zet-desktop
+
+      - name: Dosyayı yeniden adlandır
+        shell: bash
+        run: |
+          cp target/release/zet-browser.exe zet-browser-windows.exe
+          ls -la zet-browser-windows.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zet-browser-windows
+          path: zet-browser-windows.exe
+
+  release:
+    # Windows derlemesi başarısız olsa da Android sürümü yayınlansın.
+    needs: [build, windows]
+    if: always() && needs.build.result == 'success' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -la dist
+
       - name: GitHub Release olarak yayınla
-        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-${{ github.run_number }}
-          name: Zet Android ${{ github.run_number }}
+          name: Zet ${{ github.run_number }}
           body: |
             ${{ github.event.head_commit.message }}
 
             Commit: ${{ github.sha }}
-            Telefona kurmak için aşağıdaki `zet-browser.apk` dosyasını indir.
-          files: zet-browser.apk
+            Telefon: `zet-browser.apk` · Windows: `zet-browser-windows.exe`
+          files: dist/*
           make_latest: true

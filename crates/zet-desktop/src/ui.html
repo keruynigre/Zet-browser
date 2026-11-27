@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #e9ebef; --bar: #f8f9fb; --tab: #dfe2e8; --text: #111827; --dim: #6b7280;
+    --accent: #16a34a; --field: #eceef2; --priv: #2e1065; --privtab: #4c1d95;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 84px; overflow: hidden; font: 13px system-ui, "Segoe UI", sans-serif;
+    color: var(--text); background: var(--bg); user-select: none; }
+  body.private { --bg: #1e0b3d; --bar: var(--priv); --tab: #3b1477; --text: #f3f4f6; --dim: #c4b5fd; --field: #4c1d95; }
+  #tabs { height: 38px; display: flex; align-items: flex-end; padding: 0 6px; gap: 2px; overflow: hidden; }
+  .tab { height: 32px; flex: 0 1 220px; min-width: 56px; display: flex; align-items: center; gap: 7px;
+    padding: 0 6px 0 10px; border-radius: 9px 9px 0 0; background: transparent; cursor: default;
+    color: var(--text); position: relative; }
+  .tab:hover { background: rgba(127,127,127,.15); }
+  .tab.active { background: var(--bar); }
+  .tab .ic { width: 16px; height: 16px; border-radius: 4px; background: #94a3b8; color: #fff;
+    font-size: 10px; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .tab.k-private .ic { background: #7c3aed; } .tab.k-tor .ic { background: #6d28d9; }
+  .tab .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab .x { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: var(--dim);
+    font-size: 14px; flex: none; }
+  .tab .x:hover { background: rgba(127,127,127,.3); color: var(--text); }
+  .tab.loading .ic { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .newtab { width: 30px; height: 30px; margin-bottom: 1px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 20px; color: var(--dim); flex: none; }
+  .newtab:hover { background: rgba(127,127,127,.2); color: var(--text); }
+  #bar { height: 46px; background: var(--bar); display: flex; align-items: center; gap: 4px; padding: 0 8px;
+    border-bottom: 1px solid rgba(127,127,127,.25); }
+  .b { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 16px;
+    color: var(--text); flex: none; }
+  .b:hover { background: rgba(127,127,127,.2); }
+  .b svg { width: 20px; height: 20px; fill: currentColor; }
+  #field { flex: 1; height: 34px; background: var(--field); border-radius: 17px; display: flex; align-items: center;
+    padding: 0 4px 0 12px; gap: 6px; min-width: 120px; }
+  #field:focus-within { outline: 2px solid var(--accent); background: var(--bar); }
+  #lock { font-size: 12px; color: var(--dim); }
+  #url { flex: 1; border: 0; background: transparent; color: var(--text); font: 14px system-ui, "Segoe UI", sans-serif;
+    outline: none; min-width: 0; }
+  #url::placeholder { color: var(--dim); }
+  #shield { height: 28px; min-width: 44px; border-radius: 14px; background: var(--accent); color: #fff; font-weight: 700;
+    font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 10px; cursor: default; }
+  #shield.off { background: #9ca3af; }
+  #mode { font-size: 12px; color: var(--dim); padding: 0 6px; white-space: nowrap; }
+  #update { display: none; height: 28px; border-radius: 14px; background: #2563eb; color: #fff; font-weight: 600;
+    padding: 0 12px; align-items: center; cursor: default; white-space: nowrap; }
+  #update.show { display: flex; }
+  #toast { position: fixed; right: 10px; top: 4px; background: #111827; color: #fff; padding: 6px 12px; border-radius: 8px;
+    font-size: 12px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 60%; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #toast.show { opacity: .95; }
+</style>
+</head>
+<body>
+<div id="tabs"></div>
+<div id="bar">
+  <div class="b" id="back" title="Geri (Alt+Sol)"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></div>
+  <div class="b" id="fwd" title="İleri (Alt+Sağ)"><svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg></div>
+  <div class="b" id="reload" title="Yenile (F5)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></div>
+  <div class="b" id="home" title="Yeni sekme sayfası"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>
+  <div id="field">
+    <span id="lock"></span>
+    <input id="url" spellcheck="false" autocomplete="off" placeholder="Ara veya adres yaz">
+    <div id="shield" title="Reklam engelleme (tıkla: aç/kapat)">🛡 <span id="count">0</span></div>
+  </div>
+  <span id="mode"></span>
+  <div id="update" title="Yeni sürümü indir ve kur">⬆ Güncelle</div>
+  <div class="b" id="private" title="Yeni gizli sekme (Ctrl+Shift+N)">🕶</div>
+  <div class="b" id="tor" title="Yeni Tor sekmesi">🧅</div>
+  <div class="b" id="downloads" title="İndirilenler klasörü"><svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
+  <div class="b" id="settings" title="Ayarlar"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></div>
+</div>
+<div id="toast"></div>
+<script>
+  function post(o) { window.ipc.postMessage(JSON.stringify(o)); }
+  var $ = function (id) { return document.getElementById(id); };
+  var url = $('url'), editing = false, state = null;
+  url.addEventListener('focus', function () { editing = true; setTimeout(function () { url.select(); }, 0); });
+  url.addEventListener('blur', function () { editing = false; if (state) url.value = state.url; });
+  url.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { post({ t: 'go', text: url.value }); url.blur(); }
+    else if (e.key === 'Escape') { url.blur(); post({ t: 'focusPage' }); }
+  });
+  [['back', 'back'], ['fwd', 'fwd'], ['reload', 'reload'], ['home', 'home'], ['shield', 'shield'],
+   ['private', 'newPrivate'], ['tor', 'newTor'], ['downloads', 'downloads'], ['settings', 'settings'],
+   ['update', 'update']].forEach(function (p) {
+    $(p[0]).addEventListener('click', function () { post({ t: p[1] }); });
+  });
+  addEventListener('keydown', function (e) {
+    var c = e.ctrlKey || e.metaKey, key = (e.key || '').toLowerCase(), k = '';
+    if (c && e.shiftKey && key === 'n') k = 'private';
+    else if (c && e.shiftKey && key === 't') k = 'reopen';
+    else if (c && key === 't') k = 'newtab';
+    else if (c && key === 'w') k = 'close';
+    else if ((c && key === 'l') || e.key === 'F6') k = 'focus';
+    else if (c && e.key === 'Tab') k = e.shiftKey ? 'prev' : 'next';
+    else if (e.key === 'F5' || (c && key === 'r')) k = 'reload';
+    if (k) { e.preventDefault(); post({ t: 'key', k: k }); }
+  });
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  window.focusUrl = function () { url.focus(); url.select(); };
+  var toastTimer = 0;
+  window.toast = function (msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 3500);
+  };
+  window.zetUpdate = function (s) {
+    state = s;
+    var h = '';
+    s.tabs.forEach(function (t) {
+      var letter = t.kind === 'tor' ? '🧅' : t.kind === 'private' ? '🕶' : (t.title || '?').trim().charAt(0).toUpperCase();
+      h += '<div class="tab k-' + t.kind + (t.active ? ' active' : '') + (t.loading ? ' loading' : '') +
+        '" data-id="' + t.id + '" title="' + esc(t.title) + '"><span class="ic">' + esc(letter) +
+        '</span><span class="t">' + esc(t.title || 'Yeni sekme') + '</span><span class="x" data-close="' + t.id + '">×</span></div>';
+    });
+    h += '<div class="newtab" id="plus" title="Yeni sekme (Ctrl+T)">+</div>';
+    $('tabs').innerHTML = h;
+    if (!editing) url.value = s.url;
+    $('lock').textContent = s.url.indexOf('https://') === 0 ? '🔒' : s.url ? '⚠' : '🔍';
+    document.body.className = s.kind === 'normal' ? '' : 'private';
+    $('count').textContent = s.adblock ? s.blocked : 'Kapalı';
+    $('shield').className = s.adblock ? '' : 'off';
+    var mode = '';
+    if (s.kind === 'tor') mode = s.tor.state === 'ready' ? '🧅 Tor hazır' : s.tor.state === 'failed' ? '🧅 Tor hatası' : '🧅 Tor bağlanıyor %' + s.tor.progress;
+    else if (s.kind === 'private') mode = 'Gizli sekme';
+    $('mode').textContent = mode;
+    $('update').className = s.update ? 'show' : '';
+    if (s.update) $('update').title = s.update + ' sürümünü indir ve kur';
+  };
+  $('tabs').addEventListener('mousedown', function (e) {
+    var x = e.target.closest('[data-close]');
+    if (x || e.button === 1) {
+      var t = x || e.target.closest('.tab');
+      if (t) { e.preventDefault(); post({ t: 'close', id: +(t.dataset.close || t.dataset.id) }); }
+      return;
+    }
+    if (e.target.id === 'plus') { post({ t: 'newtab' }); return; }
+    var tab = e.target.closest('.tab');
+    if (tab) post({ t: 'select', id: +tab.dataset.id });
+  });
+  $('tabs').addEventListener('dblclick', function (e) { if (e.target.id === 'tabs') post({ t: 'newtab' }); });
+  post({ t: 'ready' });
+</script>
+</body>
+</html>
